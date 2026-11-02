@@ -84,6 +84,7 @@ try {
   const order = async (text) => {
     const panel = page.locator("aside");
     await panel.getByRole("button", { name: "업무 지시", exact: true }).first().click();
+    await panel.getByRole("radio", { name: /API 자동/ }).check();
     await page.fill("#order-text", text);
     await page.selectOption("#order-project", "number-maze");
     await panel.getByRole("button", { name: "업무 지시하기" }).click();
@@ -95,7 +96,12 @@ try {
   check("상단 바: AI 키 없음 표시", (await page.locator("header").innerText()).includes("API 키 없음"));
 
   await clickEmployee("validator");
-  await order("키 없이 실행하면 어떻게 되는지 확인");
+  await page.locator("aside").getByRole("button", { name: "업무 지시", exact: true }).first().click();
+  const apiRadio = page.locator("aside").getByRole("radio", { name: /API 자동/ });
+  check("키가 없으면 'API 자동'은 선택 불가, 무료 방식이 기본", (await apiRadio.isDisabled()) && (await page.locator("aside").getByRole("radio", { name: /붙여넣기/ }).isChecked()));
+  await page.locator("aside").getByRole("button", { name: "정보" }).click();
+  // An API-mode task created directly (e.g. by a script) must still fail honestly without a key.
+  await fetch(`${BASE}/api/tasks`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ employeeId: "validator", instruction: "키 없이 실행하면 어떻게 되는지 확인", executionMode: "api" }) });
   await page.locator("[data-testid=failed-task]").waitFor({ timeout: 30000 });
   const failText = await page.locator("[data-testid=failed-task]").innerText();
   check("키 없음 → 업무 FAILED, 실제 사유 표시", failText.includes("ANTHROPIC_API_KEY"));

@@ -1,0 +1,159 @@
+/**
+ * Shared by both execution modes:
+ * - buildPrompts: what the AI is asked (identical for the worker and for claude.ai paste)
+ * - finalizeTask: turns an AI answer into a saved report (and meeting record) and completes the task
+ */
+import { randomUUID } from "node:crypto";
+import { and, asc, eq, sql } from "drizzle-orm";
+import type { DB } from "../db/client";
+import * as s from "../db/schema";
+import { transition, recordEvent, TaskInputError } from "./service";
+import type { TaskStatus } from "@/domain/types";
+import { TASK_TYPE_BY_ID } from "@/domain/taskTypes";
+import { meetingSystemPrompt, meetingUserPrompt, parseMeeting, MeetingFormatError } from "../meetings/format";
+
+type Task = typeof s.tasks.$inferSelect;
+
+function projectOf(db: DB, id: string | null) {
+  return id ? (db.select().from(s.projects).where(eq(s.projects.id, id)).get() ?? null) : null;
+}
+
+export function meetingParticipants(db: DB, meetingId: string) {
+  return db.select().from(s.meetingParticipants).where(eq(s.meetingParticipants.meetingId, meetingId)).orderBy(asc(s.meetingParticipants.order)).all();
+}
+
+export function buildPrompts(db: DB, task: Task, webSearch: boolean): { system: string; user: string } {
+  const company = db.select().from(s.company).get();
+  const project = projectOf(db, task.projectId);
+  if (task.type === "MEETING" && task.meetingId) {
+    const meeting = db.select().from(s.meetings).where(eq(s.meetings.id, task.meetingId)).get();
+    if (!meeting) throw new TaskInputError("회의 정보를 찾을 수 없습니다.");
+    return {
+      system: meetingSystemPrompt(),
+      user: meetingUserPrompt({
+        topic: meeting.topic,
+        participantIds: meetingParticipants(db, meeting.id).map((p) => p.employeeId),
+        project,
+        companyName: company?.name,
+        webSearch,
+      }),
+    };
+  }
+  const system = db
+    .select({ p: s.employeePrompts.systemPrompt })
+    .from(s.employeePrompts)
+    .where(and(eq(s.employeePrompts.employeeId, task.employeeId), eq(s.employeePrompts.active, true)))
+    .orderBy(sql`${s.employeePrompts.version} desc`)
+    .get()?.p;
+  if (!system) throw new TaskInputError("이 직원의 시스템 프롬프트가 DB에 없습니다.");
+  const def = TASK_TYPE_BY_ID[task.type] ?? TASK_TYPE_BY_ID.GENERAL;
+  const parts: string[] = [];
+  parts.push(`# 회사\n${company?.name ?? ""} — ${company?.mission ?? ""}`);
+  if (project) {
+    parts.push(
+      `# 관련 프로젝트 (대표가 입력한 정보, "미확인"은 아직 모르는 값)\n- 이름: ${project.name}\n- 설명: ${project.description}\n- 목표: ${project.goal}\n- 현재 단계: ${project.stage}\n- 다음 계획: ${project.nextPlan}`,
+    );
+  }
+  parts.push(`# 업무 유형\n${def.label}: ${def.guide}`);
+  parts.push(
+    webSearch
+      ? "# 도구\n웹 검색 도구를 쓸 수 있습니다. 최신 가격·경쟁사·시장 정보는 검색해서 확인하고, 참고한 자료에 실제 URL을 적으세요."
+      : `# 도구\n이번 업무에서는 웹 검색을 쓸 수 없습니다. 최신 정보는 조사하지 못했다고 밝히고, '참고한 자료'에는 "웹 검색 미사용"이라고 적은 뒤 대표가 확인해야 할 항목을 쓰세요.${def.wantsWeb ? " 이 업무는 최신 시장 정보가 중요하므로 그 한계를 요약에도 밝히세요." : ""}`,
+  );
+  parts.push(`# 대표의 지시\n${task.instruction}`);
+  return { system, user: parts.join("\n\n") };
+}
+
+/** Split a markdown report into its structured fields. */
+export function parseReport(md: string) {
+  const sections: Record<string, string> = {};
+  let cur: string | null = null;
+  for (const line of md.split("\n")) {
+    const m = /^##\s+(.+)$/.exec(line.trim());
+    if (m) {
+      cur = m[1].trim();
+      sections[cur] = "";
+    } else if (cur) sections[cur] += line + "\n";
+  }
+  const bullets = (k: string) =>
+    (sections[k] ?? "")
+      .split("\n")
+      .map((l) => l.trim())
+      .filter((l) => /^[-*]\s+/.test(l))
+      .map((l) => l.replace(/^[-*]\s+/, ""))
+      .filter((l) => l && l !== "해당 없음");
+  return {
+    summary: (sections["요약"] ?? sections["회의 요약"] ?? "").trim(),
+    facts: bullets("확인된 사실"),
+    assumptions: bullets("가정과 불확실성"),
+    nextTasks: bullets("다음 추천 업무").concat(bullets("후속 업무 제안")),
+  };
+}
+
+/**
+ * Save the AI answer and mark the task COMPLETED.
+ * For meetings the answer must contain every participant and the CEO synthesis; otherwise
+ * MeetingFormatError is thrown and nothing is saved.
+ */
+export function finalizeTask(
+  db: DB,
+  task: Task,
+  text: string,
+  opts: { from: TaskStatus[]; leaseOwner?: string; sources?: { title: string; url: string }[]; truncated?: boolean; via: "api" | "manual"; usageNote?: string },
+): string {
+  const meeting = task.type === "MEETING" && task.meetingId ? db.select().from(s.meetings).where(eq(s.meetings.id, task.meetingId)).get() : null;
+  const participants = meeting ? meetingParticipants(db, meeting.id) : [];
+  const parsedMeeting = meeting ? parseMeeting(text, participants.map((p) => p.employeeId)) : null;
+  const parsed = parseReport(parsedMeeting ? parsedMeeting.summary : text);
+  const reportId = `rep_${randomUUID().slice(0, 8)}`;
+  const viaNote = opts.via === "manual" ? "\n\n> 이 결과는 대표가 claude.ai에서 받은 답변을 붙여넣어 저장한 것입니다." : "";
+  const body = (opts.truncated ? `${text}\n\n> ⚠️ 응답이 출력 길이 한도에 걸려 여기서 잘렸습니다.` : text) + viaNote;
+
+  db.transaction((tx) => {
+    tx.insert(s.reports)
+      .values({
+        id: reportId,
+        taskId: task.id,
+        meetingId: meeting?.id ?? null,
+        employeeId: task.employeeId,
+        projectId: task.projectId,
+        title: task.title,
+        body: parsedMeeting ? parsedMeeting.summary + viaNote : body,
+        facts: JSON.stringify(parsed.facts),
+        assumptions: JSON.stringify(parsed.assumptions),
+        sources: JSON.stringify(opts.sources ?? []),
+        nextTasks: JSON.stringify(parsedMeeting ? parsedMeeting.followUps : parsed.nextTasks),
+      })
+      .run();
+    if (meeting && parsedMeeting) {
+      for (const p of participants) {
+        const st = parsedMeeting.statements.find((x) => x.employeeId === p.employeeId);
+        tx.update(s.meetingParticipants).set({ statement: st?.text ?? null }).where(eq(s.meetingParticipants.id, p.id)).run();
+      }
+      tx.update(s.meetings).set({ status: "COMPLETED", endedAt: Date.now(), summaryReportId: reportId }).where(eq(s.meetings.id, meeting.id)).run();
+    }
+    const moved = transition(tx as unknown as DB, task.id, {
+      from: opts.from,
+      leaseOwner: opts.leaseOwner,
+      patch: {
+        status: "COMPLETED",
+        progress: 100,
+        finishedAt: Date.now(),
+        statusMessage: opts.truncated ? "완료 (일부 잘림)" : meeting ? "회의록 제출 완료" : "보고서 제출 완료",
+        leaseOwner: null,
+        leaseUntil: null,
+      },
+      event: {
+        type: "TASK_COMPLETED",
+        message: `${meeting ? "회의록" : "보고서"} 제출 완료${opts.via === "manual" ? " (claude.ai 답변 붙여넣기)" : ""}${opts.truncated ? " · 일부 잘림" : ""}${opts.usageNote ? ` · ${opts.usageNote}` : ""}`,
+        data: { reportId, meetingId: meeting?.id ?? null },
+      },
+    });
+    // Throwing inside the transaction rolls back the report and meeting writes too.
+    if (!moved) throw new TaskInputError("업무 상태가 바뀌어 저장하지 않았습니다 (이미 끝났거나 취소됨).");
+    if (meeting) recordEvent(tx as unknown as DB, { type: "MEETING_ENDED", meetingId: meeting.id, employeeId: task.employeeId, message: `회의 종료: ${meeting.topic.slice(0, 40)}` });
+  });
+  return reportId;
+}
+
+export { MeetingFormatError };

@@ -41,6 +41,15 @@ const REPORT = `## 요약
 - 실제 API 키로 같은 업무를 다시 실행하기
 `;
 
+const NAMES = { "ceo-advisor": "한결 (CEO Advisor)", validator: "서진 (Business Validator)", cto: "도윤 (CTO / Product Lead)", pricing: "하린 (Pricing Strategist)", sales: "민재 (Sales Rep)", marketing: "유나 (Marketing Lead)", bookkeeper: "지호 (Bookkeeper)", contract: "세아 (Contract Reviewer)", ops: "태오 (Operations Manager)" };
+function meetingAnswer(ids, bad) {
+  const speak = ids
+    .filter((_, i) => !(bad && i === 0))
+    .map((id) => `=== 부서: ${id} | ${NAMES[id]} ===\n[테스트용 가짜 발언] ${NAMES[id]}의 관점에서 본 의견입니다. 실제 Claude 분석이 아닙니다.\n- 대안: 작게 검증하기`)
+    .join("\n\n");
+  return `${speak}\n\n=== 종합: CEO Advisor ===\n## 회의 요약\n[테스트용] 모든 부서 의견을 종합했습니다.\n## 쟁점\n- 비용과 속도\n## 대안 비교\n| 안 | 장점 |\n|---|---|\n| A | 빠름 |\n## 대표 결정 선택지\n- [A] 2주 안에 MVP로 검증\n- [B] 보류하고 다른 프로젝트 집중\n## 후속 업무 제안\n- 담당: cto | 업무: MVP 범위를 1주 분량으로 정리\n- 담당: marketing | 업무: 테스트 사용자 20명 모집 문구 작성\n`;
+}
+
 function sse(res, event, data) {
   res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
 }
@@ -84,7 +93,9 @@ const server = http.createServer(async (req, res) => {
   sse(res, "content_block_delta", { type: "content_block_delta", index: 0, delta: { type: "signature_delta", signature: "mocksig" } });
   sse(res, "content_block_stop", { type: "content_block_stop", index: 0 });
   sse(res, "content_block_start", { type: "content_block_start", index: 1, content_block: { type: "text", text: "" } });
-  const chunks = REPORT.match(/[\s\S]{1,40}/g);
+  const pm = /PARTICIPANTS: ([a-z,-]+)/.exec(prompt);
+  const text = pm ? meetingAnswer(pm[1].split(","), prompt.includes("MOCK_BADMEETING")) : REPORT;
+  const chunks = text.match(/[\s\S]{1,40}/g);
   const delay = prompt.includes("MOCK_SLOW") ? 1000 : Number(process.env.MOCK_CHUNK_MS ?? 120);
   for (const t of chunks) {
     if (res.destroyed) return;

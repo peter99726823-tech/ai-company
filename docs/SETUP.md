@@ -18,6 +18,12 @@
 | `DATABASE_PATH` | 아니요 | `./data/company.db` | SQLite 파일 위치 |
 | `APP_PASSWORD` | 외부 공개 시 필수 | 없음 | 값이 있으면 모든 페이지와 API에 비밀번호(HTTP Basic, 사용자 이름은 아무거나)가 필요합니다. |
 
+## 비용 없이 쓰기
+
+API 키가 없어도 앱의 모든 업무와 회의는 **붙여넣기 방식**으로 처리할 수 있습니다. 앱이 만든 지시문을 claude.ai(무료 플랜 포함)에 붙여넣고, 답을 다시 앱에 붙여넣으면 됩니다. API 비용은 0원이고, 사용량은 claude.ai 플랜의 한도를 따릅니다.
+
+API 자동 방식을 싸게 쓰고 싶다면 `.env.local`에 `AI_MODEL=claude-haiku-5-5`, `AI_EFFORT=low`를 넣으세요. 보고서 1건에 약 0.002달러(추정)입니다. 대신 분석의 깊이는 낮아집니다.
+
 ## Claude API 연결 방법
 
 1. [Claude Console](https://platform.claude.com/)에서 API 키를 만듭니다.

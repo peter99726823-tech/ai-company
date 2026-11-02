@@ -76,6 +76,8 @@ export const tasks = sqliteTable(
     parentTaskId: text("parent_task_id"), // follow-ups (수정 요청 등)
     meetingId: text("meeting_id"),
     source: text("source").notNull().default("manual"), // manual | proposal | schedule | meeting
+    /** "api": the worker calls Claude. "manual": the CEO pastes the prompt into claude.ai and pastes the answer back (no API cost). */
+    executionMode: text("execution_mode").notNull().default("api"),
     requiresApproval: integer("requires_approval", { mode: "boolean" }).notNull().default(false),
     progress: integer("progress").notNull().default(0), // 0-100, server-reported
     statusMessage: text("status_message"),
@@ -148,6 +150,8 @@ export const meetings = sqliteTable("meetings", {
   maxCalls: integer("max_calls").notNull().default(8),
   maxCostMicros: integer("max_cost_micros").notNull().default(1_000_000),
   summaryReportId: text("summary_report_id"),
+  taskId: text("task_id"), // the task that produces the meeting record
+  decision: text("decision"), // JSON {option, note, at}
   createdAt: integer("created_at").notNull().$defaultFn(now),
   endedAt: integer("ended_at"),
 });

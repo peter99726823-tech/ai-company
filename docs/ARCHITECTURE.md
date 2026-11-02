@@ -40,8 +40,9 @@
 | Task Orchestrator | `src/server/tasks/runner.ts`, `worker/index.ts` | 선점, 실행, 재시도, 취소, 실행기 중단 처리 | ✅ |
 | Report Manager | `reports` 테이블, `/api/reports/[id]`, `ReportModal` | 보고서 저장·구조화·열람 | ✅ |
 | Cost Tracker | `src/server/ai/pricing.ts`, `api_usage` | 실제 토큰 사용량 × 가격표 = 추정 비용, 일일 한도 | ✅ |
-| Approval Manager | `approvals` 테이블 | 승인, 수정 요청, 후속 업무 | PHASE 3 |
-| Meeting | `meetings`, `meeting_participants` | 순차 발언, 호출 수·비용 상한 | PHASE 3 |
+| Meeting | `src/server/meetings/` (`format.ts`, `service.ts`), `MeetingDialog`, `MeetingModal` | 회의 지시문, 응답 검증·분해, 부서별 발언 저장, 결정, 후속 업무 | ✅ |
+| Manual mode | `tasks.execution_mode = manual`, `/api/tasks/[id]/prompt`, `/api/tasks/[id]/submit`, `ManualRun` | claude.ai 붙여넣기로 API 비용 없이 처리. 실행기는 이 업무를 가져가지 않음 | ✅ |
+| Approval Manager | `approvals` 테이블 | 회의 결정 기록 ✅ · 보고서 승인·수정 요청 | 일부 |
 | Scheduler | `worker/` | 반복 업무, 자동 모드 한도 | PHASE 4 |
 
 ## 디렉터리
@@ -100,3 +101,12 @@ ai-company/
 - `api_usage.cost_is_estimate`와 `price_table_version`으로 비용이 실제 청구액인지, 가격표로 계산한 추정치인지 구분합니다.
 - `financial_transactions.is_simulation`으로 실제 거래와 시뮬레이션을 구분합니다.
 - 서버가 처음 DB를 열 때 마이그레이션을 자동 적용하고, 비어 있으면 회사·직원 9명·프로젝트 5개를 넣습니다.
+
+## 회의 처리 방식
+
+1. `POST /api/meetings` → `meetings`, `meeting_participants`(발언 순서, CEO Advisor 마지막), 회의용 업무(`type=MEETING`, 담당 CEO Advisor) 생성, `MEETING_STARTED` 기록.
+2. 지시문(`format.ts`)은 참석자 명단과 구분선(`=== 부서: id | 이름 ===`, `=== 종합: CEO Advisor ===`)을 포함합니다. API 자동이든 붙여넣기든 같은 지시문입니다.
+3. 답이 오면 `parseMeeting`이 참석자마다 발언을 찾습니다. 하나라도 없으면 저장하지 않고 오류를 돌려줍니다 (붙여넣기는 400, API는 FAILED).
+4. 저장: 참석자별 `statement`, 종합은 `reports`, 업무 `COMPLETED`, `MEETING_ENDED`.
+5. 화면: 회의 업무가 열려 있는 동안 참석자는 회의실 좌석에 앉습니다. 끝나면 저장된 실제 발언의 첫 문장을 발언 순서대로 7초씩 말풍선으로 보여줍니다 (`useTaskDriver.meetingWants`).
+6. 결정: `POST /api/meetings/[id]/decide` → `approvals`(MEETING_DECISION), `DECISION_RECORDED` 이벤트, 고른 후속 업무 생성(`parentTaskId` = 회의 업무).

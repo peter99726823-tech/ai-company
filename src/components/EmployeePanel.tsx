@@ -30,6 +30,7 @@ export function EmployeePanel({ data, health, reload }: { data: OfficeSnapshot |
   const [instruction, setInstruction] = useState("");
   const [projectId, setProjectId] = useState("");
   const [type, setType] = useState("GENERAL");
+  const [execMode, setExecMode] = useState<"api" | "manual">("manual");
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<{ tone: "ok" | "bad"; text: string } | null>(null);
 
@@ -41,12 +42,17 @@ export function EmployeePanel({ data, health, reload }: { data: OfficeSnapshot |
     setNotice(null);
     if (id) setType(DEFAULT_TYPE_FOR[id] ?? "GENERAL");
   }, [id]);
+  useEffect(() => {
+    setExecMode(health?.worker.running && health?.ai.keyConfigured ? "api" : "manual");
+  }, [health?.worker.running, health?.ai.keyConfigured]);
 
   if (!profile || !id) return null;
   const mine = data?.byEmployee?.[id];
   const active = mine?.activeTask ?? null;
   const last = mine?.lastFinished ?? null;
   const workerOn = !!health?.worker.running;
+  const apiReady = workerOn && !!health?.ai.keyConfigured;
+  const openManual = useOffice.getState().openManual;
   const typeDef = TASK_TYPE_BY_ID[type];
 
   async function post(url: string, body?: unknown) {
@@ -60,7 +66,7 @@ export function EmployeePanel({ data, health, reload }: { data: OfficeSnapshot |
     if (!instruction.trim() || busy) return;
     setBusy(true);
     setNotice(null);
-    const { ok, j } = await post("/api/tasks", { employeeId: id, instruction, type, projectId: projectId || null });
+    const { ok, j } = await post("/api/tasks", { employeeId: id, instruction, type, projectId: projectId || null, executionMode: execMode });
     setBusy(false);
     if (!ok) {
       setNotice({ tone: "bad", text: j.error ?? "업무를 등록하지 못했습니다." });
@@ -69,10 +75,16 @@ export function EmployeePanel({ data, health, reload }: { data: OfficeSnapshot |
     setInstruction("");
     setNotice({
       tone: "ok",
-      text: workerOn ? "업무를 등록했습니다. 실행기가 곧 시작합니다." : "업무를 등록했습니다. 실행기가 꺼져 있어 켜질 때까지 대기합니다.",
+      text:
+        execMode === "manual"
+          ? "업무를 등록했습니다. 지시문을 claude.ai에 붙여넣고 답을 가져오세요."
+          : workerOn
+            ? "업무를 등록했습니다. 실행기가 곧 시작합니다."
+            : "업무를 등록했습니다. 실행기가 꺼져 있어 켜질 때까지 대기합니다.",
     });
     setTab("info");
     reload();
+    if (execMode === "manual") openManual(j.task.id);
   }
 
   async function act(url: string) {
@@ -133,7 +145,13 @@ export function EmployeePanel({ data, health, reload }: { data: OfficeSnapshot |
                   <i className="block h-full bg-ok transition-[width] duration-500" style={{ width: `${active.progress}%` }} />
                 </div>
                 <div className="text-[12px] text-muted">{active.statusMessage}</div>
-                {!workerOn && active.status === "QUEUED" && <p className="text-[12px] text-warn">실행기가 꺼져 있어 시작되지 않았습니다.</p>}
+                {active.executionMode === "manual" && active.status === "QUEUED" ? (
+                  <button type="button" onClick={() => (active.meetingId ? useOffice.getState().openMeeting(active.meetingId) : openManual(active.id))} className="pixel mr-2 rounded-sm bg-hi px-2 py-0.5 text-[11px] font-bold text-void">
+                    {active.meetingId ? "회의실 열기" : "붙여넣기로 처리"}
+                  </button>
+                ) : (
+                  !workerOn && active.status === "QUEUED" && <p className="text-[12px] text-warn">실행기가 꺼져 있어 시작되지 않았습니다.</p>
+                )}
                 <button type="button" onClick={() => act(`/api/tasks/${active.id}/cancel`)} className="pixel rounded-sm border border-line px-2 py-0.5 text-[11px] text-muted hover:text-bad">
                   {active.cancelRequested ? "취소 요청됨" : "업무 취소"}
                 </button>
@@ -244,6 +262,17 @@ export function EmployeePanel({ data, health, reload }: { data: OfficeSnapshot |
           {typeDef?.wantsWeb && !health?.ai.webSearch && (
             <p className="rounded-sm bg-warn/10 p-2 text-[12px] text-warn">웹 검색이 꺼져 있어 최신 시장·가격 정보는 조사하지 못합니다. 보고서에 그 한계가 표시됩니다.</p>
           )}
+          <fieldset className="grid grid-cols-2 gap-1">
+            <legend className="pixel mb-1 text-[12px] text-muted">실행 방식</legend>
+            <label className={`flex items-center gap-1.5 rounded-sm border-2 p-1.5 text-[12px] ${execMode === "manual" ? "border-hi" : "border-line"}`}>
+              <input type="radio" name="exec" checked={execMode === "manual"} onChange={() => setExecMode("manual")} />
+              붙여넣기 (무료)
+            </label>
+            <label className={`flex items-center gap-1.5 rounded-sm border-2 p-1.5 text-[12px] ${execMode === "api" ? "border-hi" : "border-line"} ${apiReady ? "" : "opacity-50"}`}>
+              <input type="radio" name="exec" checked={execMode === "api"} onChange={() => setExecMode("api")} disabled={!apiReady} />
+              API 자동{apiReady ? "" : " (키 필요)"}
+            </label>
+          </fieldset>
           <label className="block">
             <span className="pixel text-[12px] text-muted">관련 프로젝트 (정보가 자동으로 전달됩니다)</span>
             <select id="order-project" value={projectId} onChange={(e) => setProjectId(e.target.value)} className="mt-1 w-full rounded-sm border-2 border-line bg-panel-2 px-2 py-1.5">
@@ -270,9 +299,9 @@ export function EmployeePanel({ data, health, reload }: { data: OfficeSnapshot |
             {busy ? "등록 중…" : "업무 지시하기"}
           </button>
           <p className="text-[11px] leading-relaxed text-muted">
-            지시는 DB에 저장되고 실행기가 Claude({health?.ai.model ?? "–"})로 처리합니다. 실패하면 실제 오류가 그대로 표시되며 결과를 지어내지 않습니다.
-            {!workerOn && " 지금은 실행기가 꺼져 있습니다."}
-            {workerOn && !health?.ai.keyConfigured && " 지금은 API 키가 없어 실행하면 실패로 기록됩니다."}
+            {execMode === "manual"
+              ? "등록하면 지시문이 만들어집니다. claude.ai에 붙여넣고 받은 답을 다시 붙여넣으면 보고서로 저장됩니다. API 비용은 들지 않습니다."
+              : `실행기가 Claude(${health?.ai.model ?? "–"})로 처리합니다. 실패하면 실제 오류가 그대로 표시되며 결과를 지어내지 않습니다.`}
           </p>
         </form>
       )}

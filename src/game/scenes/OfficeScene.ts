@@ -366,7 +366,7 @@ export class OfficeScene extends Phaser.Scene {
         return { x: (a.sprite.x - cam.worldView.x) * cam.zoom, y: (a.sprite.y - 12 - cam.worldView.y) * cam.zoom };
       },
       actors: () =>
-        [...this.actors.values()].map((a) => ({ id: a.profile.id, x: a.sprite.x, y: a.sprite.y, activity: a.activity, moving: a.moving, anim: a.sprite.anims.currentAnim?.key })),
+        [...this.actors.values()].map((a) => ({ id: a.profile.id, x: a.sprite.x, y: a.sprite.y, activity: a.activity, moving: a.moving, anim: a.sprite.anims.currentAnim?.key, bubble: a.bubbleValue, mode: a.mode })),
       camera: () => ({ zoom: this.cameras.main.zoom, scrollX: this.cameras.main.scrollX, scrollY: this.cameras.main.scrollY }),
       violations: () => this.violations.slice(),
       screenLit: (deskId: string) => {

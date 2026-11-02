@@ -72,10 +72,16 @@ export function BottomDock({ data, error }: { data: OfficeSnapshot | null; error
                 <span className="min-w-0 flex-1 truncate">
                   <span className="text-muted">{EMPLOYEE_BY_ID[t.employeeId]?.name}</span> {t.title}
                 </span>
-                {t.reportId && (
-                  <button type="button" onClick={() => openReport(t.reportId)} className="pixel shrink-0 rounded-sm bg-panel px-2 text-[11px] text-hi hover:bg-line">
-                    보고서
+                {t.meetingId ? (
+                  <button type="button" onClick={() => useOffice.getState().openMeeting(t.meetingId)} className="pixel shrink-0 rounded-sm bg-panel px-2 text-[11px] text-hi hover:bg-line">
+                    회의록
                   </button>
+                ) : (
+                  t.reportId && (
+                    <button type="button" onClick={() => openReport(t.reportId)} className="pixel shrink-0 rounded-sm bg-panel px-2 text-[11px] text-hi hover:bg-line">
+                      보고서
+                    </button>
+                  )
                 )}
               </li>
             ))}
@@ -90,8 +96,21 @@ export function BottomDock({ data, error }: { data: OfficeSnapshot | null; error
           <ul className="space-y-1 text-[12px]">
             {data.attention.map((t) => (
               <li key={t.id}>
-                <button type="button" onClick={() => toGame.emit("select", t.employeeId)} className="w-full truncate text-left hover:text-hi" title={t.error ?? ""}>
-                  <span className={t.status === "FAILED" ? "text-bad" : "text-hi"}>{TASK_STATUS_LABEL[t.status as TaskStatus]}</span>{" "}
+                <button
+                  type="button"
+                  onClick={() =>
+                    t.status === "QUEUED" && t.executionMode === "manual"
+                      ? t.meetingId
+                        ? useOffice.getState().openMeeting(t.meetingId)
+                        : useOffice.getState().openManual(t.id)
+                      : toGame.emit("select", t.employeeId)
+                  }
+                  className="w-full truncate text-left hover:text-hi"
+                  title={t.error ?? ""}
+                >
+                  <span className={t.status === "FAILED" ? "text-bad" : "text-hi"}>
+                    {t.status === "QUEUED" && t.executionMode === "manual" ? "붙여넣기 대기" : TASK_STATUS_LABEL[t.status as TaskStatus]}
+                  </span>{" "}
                   <span className="text-muted">{EMPLOYEE_BY_ID[t.employeeId]?.name}</span> {t.title}
                 </button>
                 {t.error && <div className="truncate pl-2 text-[11px] text-muted">{t.error}</div>}

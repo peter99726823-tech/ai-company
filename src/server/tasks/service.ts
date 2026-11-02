@@ -66,16 +66,26 @@ export class TaskInputError extends Error {}
 
 export function createTask(
   db: DB,
-  input: { employeeId: string; instruction: string; type?: string; projectId?: string | null; parentTaskId?: string | null },
+  input: {
+    employeeId: string;
+    instruction: string;
+    type?: string;
+    projectId?: string | null;
+    parentTaskId?: string | null;
+    executionMode?: "api" | "manual";
+    meetingId?: string | null;
+    source?: string;
+  },
 ) {
   const instruction = input.instruction?.trim();
   if (!instruction) throw new TaskInputError("업무 내용을 입력하세요.");
   if (instruction.length > 20000) throw new TaskInputError("업무 내용이 너무 깁니다 (최대 20,000자).");
   const emp = db.select().from(s.employees).where(eq(s.employees.id, input.employeeId)).get();
   if (!emp) throw new TaskInputError("존재하지 않는 직원입니다.");
-  const type = input.type && TASK_TYPE_BY_ID[input.type] ? input.type : "GENERAL";
-  const def = TASK_TYPE_BY_ID[type];
+  const type = input.type === "MEETING" ? "MEETING" : input.type && TASK_TYPE_BY_ID[input.type] ? input.type : "GENERAL";
+  const def = type === "MEETING" ? { label: "회의", supported: true, needs: "" } : TASK_TYPE_BY_ID[type];
   if (!def.supported) throw new TaskInputError(`아직 실행할 수 없는 업무 유형입니다. ${def.needs ?? ""}`);
+  const executionMode = input.executionMode === "manual" ? "manual" : "api";
   if (input.projectId) {
     const p = db.select({ id: s.projects.id }).from(s.projects).where(eq(s.projects.id, input.projectId)).get();
     if (!p) throw new TaskInputError("존재하지 않는 프로젝트입니다.");
@@ -94,13 +104,22 @@ export function createTask(
         employeeId: emp.id,
         projectId: input.projectId || null,
         parentTaskId: input.parentTaskId ?? null,
+        meetingId: input.meetingId ?? null,
+        source: input.source ?? "manual",
+        executionMode,
         maxCalls,
-        statusMessage: "실행 대기 중",
+        statusMessage: executionMode === "manual" ? "claude.ai 답변 붙여넣기 대기" : "실행 대기 중",
       })
       .run();
     const name = EMPLOYEE_BY_ID[emp.id]?.name ?? emp.name;
     recordEvent(tx as unknown as DB, { type: "TASK_CREATED", taskId: id, employeeId: emp.id, status: "QUEUED", message: `업무 등록: ${title}` });
-    recordEvent(tx as unknown as DB, { type: "TASK_ASSIGNED", taskId: id, employeeId: emp.id, status: "QUEUED", message: `${name}에게 배정 (${def.label})` });
+    recordEvent(tx as unknown as DB, {
+      type: "TASK_ASSIGNED",
+      taskId: id,
+      employeeId: emp.id,
+      status: "QUEUED",
+      message: `${name}에게 배정 (${def.label}${executionMode === "manual" ? " · 붙여넣기 방식" : ""})`,
+    });
   });
   return getTask(db, id)!;
 }
@@ -144,9 +163,21 @@ export function requestCancel(db: DB, id: string): { ok: boolean; message: strin
 
 /** Retry a failed or canceled task: it goes back to the queue with its call counter reset. */
 export function retryTask(db: DB, id: string): { ok: boolean; message: string } {
+  const cur = getTask(db, id);
   const ok = transition(db, id, {
     from: ["FAILED", "CANCELED"],
-    patch: { status: "QUEUED", error: null, attempts: 0, progress: 0, cancelRequested: false, finishedAt: null, startedAt: null, leaseOwner: null, leaseUntil: null, statusMessage: "다시 대기열에 넣음" },
+    patch: {
+      status: "QUEUED",
+      error: null,
+      attempts: 0,
+      progress: 0,
+      cancelRequested: false,
+      finishedAt: null,
+      startedAt: null,
+      leaseOwner: null,
+      leaseUntil: null,
+      statusMessage: cur?.executionMode === "manual" ? "claude.ai 답변 붙여넣기 대기" : "다시 대기열에 넣음",
+    },
     event: { type: "TASK_ASSIGNED", message: "대표가 다시 실행을 요청했습니다." },
   });
   return { ok, message: ok ? "다시 대기열에 넣었습니다." : "실패하거나 취소된 업무만 다시 실행할 수 있습니다." };

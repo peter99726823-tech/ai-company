@@ -67,6 +67,9 @@ export function TopBar({ data, health, live }: { data: OfficeSnapshot | null; he
         </span>
       </div>
 
+      <button type="button" onClick={() => useOffice.getState().setMeetingDialog(true)} className="pixel rounded-sm bg-hi px-3 py-1 text-[13px] font-bold text-void hover:brightness-110">
+        회의 소집
+      </button>
       <div className="flex items-center gap-1" role="group" aria-label="게임 속도">
         <span className="pixel mr-1 hidden text-[11px] text-muted sm:inline">연출 속도</span>
         {SPEEDS.map((s) => (

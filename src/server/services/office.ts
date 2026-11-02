@@ -1,8 +1,9 @@
 import "server-only";
-import { and, desc, eq, inArray, gte, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, gte, or, sql } from "drizzle-orm";
 import { getDb } from "../db/client";
 import * as s from "../db/schema";
 import type { EmployeeLook } from "@/domain/types";
+import { recentMeetings } from "../meetings/service";
 
 function startOfTodayLocal() {
   const d = new Date();
@@ -48,7 +49,7 @@ export function getOfficeSnapshot() {
   const attention = db
     .select()
     .from(s.tasks)
-    .where(inArray(s.tasks.status, ["FAILED", "WAITING_APPROVAL"]))
+    .where(or(inArray(s.tasks.status, ["FAILED", "WAITING_APPROVAL"]), and(eq(s.tasks.status, "QUEUED"), eq(s.tasks.executionMode, "manual"))))
     .orderBy(desc(s.tasks.updatedAt))
     .limit(8)
     .all();
@@ -99,6 +100,7 @@ export function getOfficeSnapshot() {
     recentEvents,
     recentCompleted: recentCompleted.map((t) => ({ ...t, reportId: reportIds[t.id] ?? null })),
     maxEventId,
+    meetings: recentMeetings(db, 6),
     attention,
     serverTime: Date.now(),
   };

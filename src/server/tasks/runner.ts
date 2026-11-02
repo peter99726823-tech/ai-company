@@ -7,8 +7,8 @@ import { and, eq, gte, inArray, lt, or, isNull, sql } from "drizzle-orm";
 import type { DB } from "../db/client";
 import * as s from "../db/schema";
 import { transition, recordEvent } from "./service";
-import { runReport, describeError, engineConfigFromEnv, type EngineConfig, type Progress } from "../ai/engine";
-import { TASK_TYPE_BY_ID } from "../ai/prompts";
+import { runReport, describeError, engineConfigFromEnv, type Progress } from "../ai/engine";
+import { buildPrompts, finalizeTask, MeetingFormatError } from "./complete";
 import { estimateCostMicros, PRICE_TABLE_VERSION } from "../ai/pricing";
 import { setSetting } from "../settings";
 
@@ -20,7 +20,7 @@ export function claimNext(db: DB, owner: string) {
   const candidate = db
     .select({ id: s.tasks.id })
     .from(s.tasks)
-    .where(and(eq(s.tasks.status, "QUEUED"), or(isNull(s.tasks.leaseUntil), lt(s.tasks.leaseUntil, now))))
+    .where(and(eq(s.tasks.status, "QUEUED"), eq(s.tasks.executionMode, "api"), or(isNull(s.tasks.leaseUntil), lt(s.tasks.leaseUntil, now))))
     .orderBy(s.tasks.createdAt)
     .limit(1)
     .get();
@@ -77,52 +77,7 @@ export function todaySpendMicros(db: DB) {
     .get()!.m;
 }
 
-function buildUserPrompt(db: DB, task: typeof s.tasks.$inferSelect, cfg: EngineConfig) {
-  const def = TASK_TYPE_BY_ID[task.type] ?? TASK_TYPE_BY_ID.GENERAL;
-  const company = db.select().from(s.company).get();
-  const project = task.projectId ? db.select().from(s.projects).where(eq(s.projects.id, task.projectId)).get() : null;
-  const parts: string[] = [];
-  parts.push(`# 회사\n${company?.name ?? ""} — ${company?.mission ?? ""}`);
-  if (project) {
-    parts.push(
-      `# 관련 프로젝트 (대표가 입력한 정보, "미확인"은 아직 모르는 값)\n- 이름: ${project.name}\n- 설명: ${project.description}\n- 목표: ${project.goal}\n- 현재 단계: ${project.stage}\n- 다음 계획: ${project.nextPlan}`,
-    );
-  }
-  parts.push(`# 업무 유형\n${def.label}: ${def.guide}`);
-  parts.push(
-    cfg.webSearch
-      ? "# 도구\n웹 검색 도구를 쓸 수 있습니다. 최신 가격·경쟁사·시장 정보는 검색해서 확인하고, 참고한 자료에 실제 URL을 적으세요."
-      : `# 도구\n이번 업무에서는 웹 검색을 쓸 수 없습니다. 최신 정보는 조사하지 못했다고 밝히고, '참고한 자료'에는 "웹 검색 미사용"이라고 적은 뒤 대표가 확인해야 할 항목을 쓰세요.${def.wantsWeb ? " 이 업무는 최신 시장 정보가 중요하므로 그 한계를 요약에도 밝히세요." : ""}`,
-  );
-  parts.push(`# 대표의 지시\n${task.instruction}`);
-  return parts.join("\n\n");
-}
-
-/** Split the markdown report into the stored structured fields. */
-export function parseReport(md: string) {
-  const sections: Record<string, string> = {};
-  let cur: string | null = null;
-  for (const line of md.split("\n")) {
-    const m = /^##\s+(.+)$/.exec(line.trim());
-    if (m) {
-      cur = m[1].trim();
-      sections[cur] = "";
-    } else if (cur) sections[cur] += line + "\n";
-  }
-  const bullets = (k: string) =>
-    (sections[k] ?? "")
-      .split("\n")
-      .map((l) => l.trim())
-      .filter((l) => /^[-*]\s+/.test(l))
-      .map((l) => l.replace(/^[-*]\s+/, ""))
-      .filter((l) => l && l !== "해당 없음");
-  return {
-    summary: (sections["요약"] ?? "").trim(),
-    facts: bullets("확인된 사실"),
-    assumptions: bullets("가정과 불확실성"),
-    nextTasks: bullets("다음 추천 업무"),
-  };
-}
+export { parseReport } from "./complete";
 
 const SECTION_BUBBLE: Record<string, string> = {
   요약: "요약 정리 중...",
@@ -151,17 +106,13 @@ export async function runTask(db: DB, owner: string, task: typeof s.tasks.$infer
     return;
   }
 
-  const system = db
-    .select({ p: s.employeePrompts.systemPrompt })
-    .from(s.employeePrompts)
-    .where(and(eq(s.employeePrompts.employeeId, task.employeeId), eq(s.employeePrompts.active, true)))
-    .orderBy(sql`${s.employeePrompts.version} desc`)
-    .get()?.p;
-  if (!system) {
-    fail("이 직원의 시스템 프롬프트가 DB에 없습니다.");
+  let system: string, user: string;
+  try {
+    ({ system, user } = buildPrompts(db, task, cfg.webSearch));
+  } catch (e) {
+    fail((e as Error).message);
     return;
   }
-  const user = buildUserPrompt(db, task, cfg);
 
   let attempt = task.attempts;
   while (attempt < task.maxCalls) {
@@ -245,42 +196,19 @@ export async function runTask(db: DB, owner: string, task: typeof s.tasks.$infer
       }
       db.update(s.taskExecutions).set({ status: "SUCCEEDED", finishedAt: Date.now(), requestId: r.requestId, model: r.model }).where(eq(s.taskExecutions.id, execId)).run();
 
-      const parsed = parseReport(r.text);
-      const reportId = `rep_${randomUUID().slice(0, 8)}`;
-      const truncated = r.stopReason === "max_tokens";
-      db.transaction((tx) => {
-        tx.insert(s.reports)
-          .values({
-            id: reportId,
-            taskId: task.id,
-            employeeId: task.employeeId,
-            projectId: task.projectId,
-            title: task.title,
-            body: truncated ? `${r.text}\n\n> ⚠️ 응답이 출력 길이 한도에 걸려 여기서 잘렸습니다.` : r.text,
-            facts: JSON.stringify(parsed.facts),
-            assumptions: JSON.stringify(parsed.assumptions),
-            sources: JSON.stringify(r.sources),
-            nextTasks: JSON.stringify(parsed.nextTasks),
-          })
-          .run();
-      });
-      transition(db, task.id, {
-        from: ["RUNNING"],
-        leaseOwner: owner,
-        patch: {
-          status: "COMPLETED",
-          progress: 100,
-          finishedAt: Date.now(),
-          statusMessage: truncated ? "완료 (보고서 일부 잘림)" : "보고서 제출 완료",
-          leaseOwner: null,
-          leaseUntil: null,
-        },
-        event: {
-          type: "TASK_COMPLETED",
-          message: `보고서 제출 완료${truncated ? " (길이 한도로 일부 잘림)" : ""} · 토큰 입력 ${r.usage.input_tokens.toLocaleString()} / 출력 ${r.usage.output_tokens.toLocaleString()} · 추정 비용 $${(cost.micros / 1e6).toFixed(3)}`,
-          data: { reportId },
-        },
-      });
+      try {
+        finalizeTask(db, task, r.text, {
+          from: ["RUNNING"],
+          leaseOwner: owner,
+          sources: r.sources,
+          truncated: r.stopReason === "max_tokens",
+          via: "api",
+          usageNote: `토큰 입력 ${r.usage.input_tokens.toLocaleString()} / 출력 ${r.usage.output_tokens.toLocaleString()} · 추정 비용 $${(cost.micros / 1e6).toFixed(3)}`,
+        });
+      } catch (fe) {
+        // e.g. a meeting answer that skipped a participant: report it, never fill the gap
+        fail(fe instanceof MeetingFormatError ? `AI 응답이 회의 형식을 지키지 않았습니다: ${fe.message}` : (fe as Error).message);
+      }
       return;
     } catch (e) {
       clearInterval(watch);

@@ -39,6 +39,7 @@ export const EVENT_TYPES = [
   "TASK_CANCELED",
   "MEETING_STARTED",
   "MEETING_ENDED",
+  "DECISION_RECORDED",
 ] as const;
 export type EventType = (typeof EVENT_TYPES)[number];
 

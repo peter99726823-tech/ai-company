@@ -240,7 +240,9 @@ export class EmployeeActor {
     // Labels keep ~11-13 px on screen whatever the camera zoom.
     const k = Phaser.Math.Clamp(1 / zoom, 0.42, 1.1);
     const tagY = y - 25 - 10 * k;
-    this.tag.setScale(k).setPosition(x, tagY).setDepth(100000 + y);
+    // At the crowded meeting table only the speaker's (or the selected employee's) tag is shown.
+    const crowded = this.activity === "meeting" && !this.moving && !this.selected && !this.bubbleTextValue;
+    this.tag.setVisible(!crowded).setScale(k).setPosition(x, tagY).setDepth(100000 + y);
     const bh = this.bubbleText.height + 10;
     this.bubble.setScale(k).setPosition(x, tagY - 10 * k - 6 * k - (bh / 2) * k).setDepth(200000 + y);
     this.pulse += dt * 4;

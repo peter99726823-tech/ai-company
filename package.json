@@ -11,13 +11,14 @@
     "setup": "npm run db:seed",
     "test": "tsx --test tests/*.test.ts",
     "typecheck": "tsc --noEmit",
-    "e2e": "node e2e/phase1.mjs && node e2e/phase2.mjs",
+    "e2e": "node e2e/phase1.mjs && node e2e/phase2.mjs && node e2e/meeting.mjs",
     "db:generate": "drizzle-kit generate",
     "preview:build": "node preview/build.mjs",
     "web:dev": "next dev -p 3000",
     "web:start": "next start -p 3000",
     "worker": "node --env-file-if-exists=.env.local --env-file-if-exists=.env --import tsx worker/index.ts",
-    "e2e:phase2": "node e2e/phase2.mjs"
+    "e2e:phase2": "node e2e/phase2.mjs",
+    "e2e:meeting": "node e2e/meeting.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.135.0",

@@ -15,6 +15,7 @@ export interface Toast {
   tone: "ok" | "bad" | "info";
   text: string;
   reportId?: string | null;
+  meetingId?: string | null;
   employeeId?: string | null;
 }
 
@@ -29,6 +30,9 @@ interface OfficeState {
   movements: MovementEntry[];
   liveEvents: TaskEventRow[];
   reportId: string | null;
+  meetingId: string | null;
+  meetingDialog: boolean;
+  manualTaskId: string | null;
   toasts: Toast[];
   setReady: () => void;
   setSelected: (id: string | null) => void;
@@ -38,6 +42,9 @@ interface OfficeState {
   pushMovement: (m: Omit<MovementEntry, "at">) => void;
   pushEvent: (e: TaskEventRow) => void;
   openReport: (id: string | null) => void;
+  openMeeting: (id: string | null) => void;
+  setMeetingDialog: (v: boolean) => void;
+  openManual: (taskId: string | null) => void;
   toast: (t: Omit<Toast, "id">) => void;
   dismissToast: (id: number) => void;
 }
@@ -53,6 +60,9 @@ export const useOffice = create<OfficeState>((set) => ({
   movements: [],
   liveEvents: [],
   reportId: null,
+  meetingId: null,
+  meetingDialog: false,
+  manualTaskId: null,
   toasts: [],
   setReady: () => set({ ready: true }),
   setSelected: (id) => set({ selectedId: id }),
@@ -65,14 +75,17 @@ export const useOffice = create<OfficeState>((set) => ({
       const toasts = [...s.toasts];
       // 대표 알림: completion and failure are announced; everything else goes to the log only.
       if (e.type === "TASK_COMPLETED") {
-        const data = e.data ? (JSON.parse(e.data) as { reportId?: string }) : {};
-        toasts.push({ id: ++toastSeq, tone: "ok", text: e.message, reportId: data.reportId ?? null, employeeId: e.employeeId });
+        const data = e.data ? (JSON.parse(e.data) as { reportId?: string; meetingId?: string | null }) : {};
+        toasts.push({ id: ++toastSeq, tone: "ok", text: e.message, reportId: data.meetingId ? null : (data.reportId ?? null), meetingId: data.meetingId ?? null, employeeId: e.employeeId });
       } else if (e.type === "TASK_FAILED") {
         toasts.push({ id: ++toastSeq, tone: "bad", text: e.message, employeeId: e.employeeId });
       }
       return { liveEvents: [e, ...s.liveEvents.filter((x) => x.id !== e.id)].slice(0, 80), toasts: toasts.slice(-4) };
     }),
   openReport: (reportId) => set({ reportId }),
+  openMeeting: (meetingId) => set({ meetingId }),
+  setMeetingDialog: (meetingDialog) => set({ meetingDialog }),
+  openManual: (manualTaskId) => set({ manualTaskId }),
   toast: (t) => set((s) => ({ toasts: [...s.toasts, { ...t, id: ++toastSeq }].slice(-4) })),
   dismissToast: (id) => set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),
 }));

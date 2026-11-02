@@ -10,6 +10,9 @@ import { useOffice } from "@/store/officeStore";
 import { useTaskDriver } from "@/hooks/useTaskDriver";
 import { ReportModal } from "@/components/ReportModal";
 import { Toasts } from "@/components/Toasts";
+import { MeetingDialog } from "@/components/MeetingDialog";
+import { MeetingModal } from "@/components/MeetingModal";
+import { ManualTaskModal } from "@/components/ManualTaskModal";
 
 const PhaserGame = dynamic(() => import("@/game/PhaserGame"), { ssr: false });
 
@@ -33,6 +36,9 @@ export default function Home() {
         <BottomDock data={data} error={error} />
       </div>
       <ReportModal />
+      <MeetingDialog data={data} health={health} reload={reload} />
+      <MeetingModal health={health} reload={reload} />
+      <ManualTaskModal reload={reload} />
     </main>
   );
 }
