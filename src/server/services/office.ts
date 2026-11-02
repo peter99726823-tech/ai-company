@@ -1,0 +1,89 @@
+import "server-only";
+import { desc, eq, inArray, gte, sql } from "drizzle-orm";
+import { getDb } from "../db/client";
+import * as s from "../db/schema";
+import type { EmployeeLook } from "@/domain/types";
+
+function startOfTodayLocal() {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  return d.getTime();
+}
+
+/** Everything the main screen needs, read from the real database. Nothing here is simulated. */
+export function getOfficeSnapshot() {
+  const db = getDb();
+  const company = db.select().from(s.company).limit(1).all()[0] ?? null;
+  const employees = db
+    .select()
+    .from(s.employees)
+    .all()
+    .map((e) => ({ ...e, expertise: JSON.parse(e.expertise) as string[], look: JSON.parse(e.look) as EmployeeLook }));
+  const projects = db.select().from(s.projects).all();
+
+  const statusCounts = db
+    .select({ status: s.tasks.status, n: sql<number>`count(*)` })
+    .from(s.tasks)
+    .groupBy(s.tasks.status)
+    .all();
+  const c = Object.fromEntries(statusCounts.map((r) => [r.status, r.n])) as Record<string, number>;
+
+  const usage = db
+    .select({ micros: sql<number>`coalesce(sum(${s.apiUsage.costMicros}),0)`, calls: sql<number>`count(*)`, est: sql<number>`coalesce(max(${s.apiUsage.costIsEstimate}),0)` })
+    .from(s.apiUsage)
+    .where(gte(s.apiUsage.createdAt, startOfTodayLocal()))
+    .all()[0];
+
+  const recentEvents = db.select().from(s.taskEvents).orderBy(desc(s.taskEvents.id)).limit(40).all();
+  const recentCompleted = db.select().from(s.tasks).where(eq(s.tasks.status, "COMPLETED")).orderBy(desc(s.tasks.finishedAt)).limit(8).all();
+  const attention = db
+    .select()
+    .from(s.tasks)
+    .where(inArray(s.tasks.status, ["FAILED", "WAITING_APPROVAL"]))
+    .orderBy(desc(s.tasks.updatedAt))
+    .limit(8)
+    .all();
+
+  const active = db
+    .select()
+    .from(s.tasks)
+    .where(inArray(s.tasks.status, ["QUEUED", "PLANNING", "RUNNING", "WAITING_APPROVAL"]))
+    .orderBy(desc(s.tasks.updatedAt))
+    .all();
+  const reportCounts = db
+    .select({ employeeId: s.reports.employeeId, n: sql<number>`count(*)` })
+    .from(s.reports)
+    .groupBy(s.reports.employeeId)
+    .all();
+  const byEmployee = Object.fromEntries(
+    employees.map((e) => [
+      e.id,
+      {
+        activeTask: active.find((t) => t.employeeId === e.id) ?? null,
+        recentCompleted: recentCompleted.filter((t) => t.employeeId === e.id).slice(0, 3),
+        reportCount: reportCounts.find((r) => r.employeeId === e.id)?.n ?? 0,
+      },
+    ]),
+  );
+
+  return {
+    company,
+    byEmployee,
+    employees,
+    projects,
+    counts: {
+      running: (c.PLANNING ?? 0) + (c.RUNNING ?? 0),
+      queued: c.QUEUED ?? 0,
+      waitingApproval: c.WAITING_APPROVAL ?? 0,
+      failed: c.FAILED ?? 0,
+      completed: c.COMPLETED ?? 0,
+    },
+    todayCost: { usd: (usage?.micros ?? 0) / 1_000_000, calls: usage?.calls ?? 0, isEstimate: !!usage?.est },
+    recentEvents,
+    recentCompleted,
+    attention,
+    serverTime: Date.now(),
+  };
+}
+
+export type OfficeSnapshot = ReturnType<typeof getOfficeSnapshot>;
