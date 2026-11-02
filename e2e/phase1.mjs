@@ -54,12 +54,10 @@ check("STEP 4 Business Validator 클릭 → 상세 창", await panel.isVisible()
 check("상세 창: 이름·직책·전문 분야·상태 표시", (await panel.innerText()).includes("Business Validator") && (await panel.innerText()).includes("경쟁사 분석"));
 await page.screenshot({ path: OUT + "02-selected.png" });
 
-// STEP 5 (PHASE 2) — order form must not pretend to work
+// Order form: submit stays disabled until there is an instruction
 await panel.getByRole("button", { name: "업무 지시", exact: true }).first().click();
-await page.fill("#order-text", "Number Maze라는 퍼즐 게임의 수익화 전략을 분석하고 장단점을 보고서로 작성해줘.");
 const submit = panel.getByRole("button", { name: "업무 지시하기" });
-check("업무 지시 버튼은 엔진 연결 전까지 비활성 (가짜 실행 없음)", await submit.isDisabled());
-check("미연결 안내 문구 표시", (await panel.innerText()).includes("PHASE 2에서 연결"));
+check("업무 지시: 내용이 비어 있으면 제출 불가", await submit.isDisabled());
 await page.screenshot({ path: OUT + "03-order-form.png" });
 await panel.getByRole("button", { name: "정보" }).click();
 

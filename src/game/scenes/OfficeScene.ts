@@ -274,11 +274,21 @@ export class OfficeScene extends Phaser.Scene {
   }
 
   /** Real-task (PHASE 2) or preview command: walk somewhere, then show an activity. */
+  private lastGo = new Map<string, Destination>();
+
   private command(c: ActorCommand) {
     const a = this.actors.get(c.id);
     if (!a) return;
     a.mode = c.source;
     if (c.bubble !== undefined) a.setBubble(c.bubble);
+    // Same place as before: only the pose/bubble changes, no new walk.
+    if (this.lastGo.get(c.id) === c.go && c.go !== "stay") {
+      if (a.moving) a.retarget(c.activity);
+      else a.setActivity(c.activity, a.facing);
+      this.publish(a);
+      return;
+    }
+    this.lastGo.set(c.id, c.go);
     const spot = this.destination(a, c.go);
     if (spot) {
       if (!a.goTo(spot, c.activity)) a.setActivity("error");
@@ -290,6 +300,7 @@ export class OfficeScene extends Phaser.Scene {
   private release(id: string) {
     const a = this.actors.get(id);
     if (!a) return;
+    this.lastGo.delete(id);
     a.mode = "ambient";
     a.setBubble(null);
     a.ambientPlace = "desk";

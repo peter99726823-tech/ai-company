@@ -18,6 +18,6 @@ const health: Health = {
 };
 
 export function useOfficeData() {
-  return { data: snapshot as unknown as OfficeSnapshot, health, error: null as string | null, reload: async () => {} };
+  return { data: snapshot as unknown as OfficeSnapshot, health, error: null as string | null, live: "connecting" as const, reload: async () => null };
 }
 export type { Health };

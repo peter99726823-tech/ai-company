@@ -80,6 +80,7 @@ export const tasks = sqliteTable(
     progress: integer("progress").notNull().default(0), // 0-100, server-reported
     statusMessage: text("status_message"),
     error: text("error"),
+    cancelRequested: integer("cancel_requested", { mode: "boolean" }).notNull().default(false),
     attempts: integer("attempts").notNull().default(0),
     maxCalls: integer("max_calls").notNull().default(3),
     /** Idempotency: a worker must claim the task (lease) before running it. */

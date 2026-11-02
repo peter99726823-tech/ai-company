@@ -1,5 +1,5 @@
 import "server-only";
-import { desc, eq, inArray, gte, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, gte, sql } from "drizzle-orm";
 import { getDb } from "../db/client";
 import * as s from "../db/schema";
 import type { EmployeeLook } from "@/domain/types";
@@ -36,6 +36,15 @@ export function getOfficeSnapshot() {
 
   const recentEvents = db.select().from(s.taskEvents).orderBy(desc(s.taskEvents.id)).limit(40).all();
   const recentCompleted = db.select().from(s.tasks).where(eq(s.tasks.status, "COMPLETED")).orderBy(desc(s.tasks.finishedAt)).limit(8).all();
+  const reportIds = Object.fromEntries(
+    db
+      .select({ taskId: s.reports.taskId, id: s.reports.id })
+      .from(s.reports)
+      .where(inArray(s.reports.taskId, recentCompleted.map((t) => t.id).concat("")))
+      .all()
+      .map((r) => [r.taskId, r.id]),
+  ) as Record<string, string>;
+  const maxEventId = db.select({ m: sql<number>`coalesce(max(${s.taskEvents.id}),0)` }).from(s.taskEvents).get()!.m;
   const attention = db
     .select()
     .from(s.tasks)
@@ -60,7 +69,15 @@ export function getOfficeSnapshot() {
       e.id,
       {
         activeTask: active.find((t) => t.employeeId === e.id) ?? null,
-        recentCompleted: recentCompleted.filter((t) => t.employeeId === e.id).slice(0, 3),
+        lastFinished:
+          db
+            .select()
+            .from(s.tasks)
+            .where(and(eq(s.tasks.employeeId, e.id), inArray(s.tasks.status, ["COMPLETED", "FAILED", "CANCELED"])))
+            .orderBy(desc(s.tasks.finishedAt))
+            .limit(1)
+            .get() ?? null,
+        recentCompleted: recentCompleted.filter((t) => t.employeeId === e.id).slice(0, 3).map((t) => ({ ...t, reportId: reportIds[t.id] ?? null })),
         reportCount: reportCounts.find((r) => r.employeeId === e.id)?.n ?? 0,
       },
     ]),
@@ -80,7 +97,8 @@ export function getOfficeSnapshot() {
     },
     todayCost: { usd: (usage?.micros ?? 0) / 1_000_000, calls: usage?.calls ?? 0, isEstimate: !!usage?.est },
     recentEvents,
-    recentCompleted,
+    recentCompleted: recentCompleted.map((t) => ({ ...t, reportId: reportIds[t.id] ?? null })),
+    maxEventId,
     attention,
     serverTime: Date.now(),
   };

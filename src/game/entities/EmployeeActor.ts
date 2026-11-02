@@ -124,6 +124,11 @@ export class EmployeeActor {
     return true;
   }
 
+  /** While walking, change what will be played on arrival. */
+  retarget(activity: Activity) {
+    if (this.arrive) this.arrive = { ...this.arrive, activity };
+  }
+
   setActivity(activity: Activity, facing: Facing = this.facing) {
     this.activity = activity;
     this.facing = facing;
@@ -190,7 +195,8 @@ export class EmployeeActor {
   /** dt in seconds of *game* time (already multiplied by game speed); zoom keeps labels a constant screen size. */
   update(dt: number, zoom = 1) {
     if (this.waypoints.length) {
-      let budget = WALK_SPEED * dt;
+      // Employees with a real task hurry to their spot; idle ones stroll.
+      let budget = WALK_SPEED * (this.mode === "task" ? 1.8 : 1) * dt;
       while (budget > 0 && this.waypoints.length) {
         const wp = this.waypoints[0];
         const dx = wp.x - this.sprite.x;

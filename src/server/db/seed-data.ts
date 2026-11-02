@@ -2,6 +2,7 @@ import { count } from "drizzle-orm";
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import * as schema from "./schema";
 import { EMPLOYEES, PROJECT_SEEDS } from "../../domain/employees";
+import { systemPromptFor } from "../ai/prompts";
 
 /** Inserts the company, the nine employees and the founder's projects — only when the DB is empty. */
 export function seedIfEmpty(db: BetterSQLite3Database<typeof schema>): boolean {
@@ -28,4 +29,13 @@ export function seedIfEmpty(db: BetterSQLite3Database<typeof schema>): boolean {
     tx.insert(schema.settings).values({ key: "autonomy_mode", value: JSON.stringify("manual") }).run();
   });
   return true;
+}
+
+/** Version 1 system prompt for any employee that has none yet. */
+export function ensurePrompts(db: BetterSQLite3Database<typeof schema>) {
+  const have = new Set(db.select({ id: schema.employeePrompts.employeeId }).from(schema.employeePrompts).all().map((r) => r.id));
+  for (const e of EMPLOYEES) {
+    if (have.has(e.id)) continue;
+    db.insert(schema.employeePrompts).values({ id: `prompt_${e.id}_v1`, employeeId: e.id, version: 1, systemPrompt: systemPromptFor(e.id) }).run();
+  }
 }

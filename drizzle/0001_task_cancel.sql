@@ -1,0 +1,1 @@
+ALTER TABLE `tasks` ADD `cancel_requested` integer DEFAULT false NOT NULL;

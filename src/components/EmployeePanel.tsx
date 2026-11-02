@@ -5,6 +5,7 @@ import { useOffice } from "@/store/officeStore";
 import { toGame, type Destination } from "@/game/bridge";
 import { EMPLOYEE_BY_ID } from "@/domain/employees";
 import { ACTIVITIES, ACTIVITY_LABEL, TASK_STATUS_LABEL, type Activity, type TaskStatus } from "@/domain/types";
+import { TASK_TYPES, DEFAULT_TYPE_FOR, TASK_TYPE_BY_ID } from "@/domain/taskTypes";
 import { portraitDataUrl } from "@/game/sprites/characterArt";
 import type { OfficeSnapshot } from "@/server/services/office";
 import type { Health } from "@/hooks/useOfficeData";
@@ -21,28 +22,68 @@ const PREVIEW_DEST: Record<Activity, Destination> = {
   waiting: "report",
 };
 
-export function EmployeePanel({ data, health }: { data: OfficeSnapshot | null; health: Health | null }) {
+export function EmployeePanel({ data, health, reload }: { data: OfficeSnapshot | null; health: Health | null; reload: () => void }) {
   const id = useOffice((s) => s.selectedId);
   const actor = useOffice((s) => (id ? s.actors[id] : undefined));
+  const openReport = useOffice((s) => s.openReport);
   const [tab, setTab] = useState<"info" | "order">("info");
   const [instruction, setInstruction] = useState("");
   const [projectId, setProjectId] = useState("");
-  const [previewOpen, setPreviewOpen] = useState(false);
+  const [type, setType] = useState("GENERAL");
+  const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState<{ tone: "ok" | "bad"; text: string } | null>(null);
 
   const profile = id ? EMPLOYEE_BY_ID[id] : null;
   const portrait = useMemo(() => (profile ? portraitDataUrl(profile.look, 4) : ""), [profile]);
   useEffect(() => {
     setTab("info");
     setInstruction("");
+    setNotice(null);
+    if (id) setType(DEFAULT_TYPE_FOR[id] ?? "GENERAL");
   }, [id]);
 
   if (!profile || !id) return null;
   const mine = data?.byEmployee?.[id];
-  const engineReady = !!health?.ai.engineConnected;
+  const active = mine?.activeTask ?? null;
+  const last = mine?.lastFinished ?? null;
+  const workerOn = !!health?.worker.running;
+  const typeDef = TASK_TYPE_BY_ID[type];
+
+  async function post(url: string, body?: unknown) {
+    const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: body ? JSON.stringify(body) : undefined });
+    const j = await r.json().catch(() => ({}));
+    return { ok: r.ok, j };
+  }
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!instruction.trim() || busy) return;
+    setBusy(true);
+    setNotice(null);
+    const { ok, j } = await post("/api/tasks", { employeeId: id, instruction, type, projectId: projectId || null });
+    setBusy(false);
+    if (!ok) {
+      setNotice({ tone: "bad", text: j.error ?? "업무를 등록하지 못했습니다." });
+      return;
+    }
+    setInstruction("");
+    setNotice({
+      tone: "ok",
+      text: workerOn ? "업무를 등록했습니다. 실행기가 곧 시작합니다." : "업무를 등록했습니다. 실행기가 꺼져 있어 켜질 때까지 대기합니다.",
+    });
+    setTab("info");
+    reload();
+  }
+
+  async function act(url: string) {
+    const { j } = await post(url);
+    setNotice({ tone: j.ok ? "ok" : "bad", text: j.message ?? "처리하지 못했습니다." });
+    reload();
+  }
 
   return (
     <aside
-      className="px-frame scroll-thin absolute inset-x-2 bottom-2 z-10 max-h-[70%] overflow-y-auto rounded-md bg-panel/95 backdrop-blur md:inset-x-auto md:bottom-auto md:right-2 md:top-2 md:max-h-[calc(100%-16px)] md:w-[340px]"
+      className="px-frame scroll-thin absolute inset-x-2 bottom-2 z-10 max-h-[70%] overflow-y-auto rounded-md bg-panel/95 backdrop-blur md:inset-x-auto md:bottom-auto md:right-2 md:top-2 md:max-h-[calc(100%-16px)] md:w-[360px]"
       aria-label={`${profile.name} 상세`}
     >
       <div className="flex items-start gap-3 border-b-2 border-line p-3" style={{ boxShadow: `inset 0 3px 0 ${profile.look.accent}` }}>
@@ -76,41 +117,69 @@ export function EmployeePanel({ data, health }: { data: OfficeSnapshot | null; h
         ))}
       </div>
 
+      {notice && <p className={`mx-3 mt-2 rounded-sm p-2 text-[12px] ${notice.tone === "ok" ? "bg-ok/10 text-ok" : "bg-bad/10 text-bad"}`}>{notice.text}</p>}
+
       {tab === "info" ? (
         <div className="space-y-3 p-3 text-[13px]">
-          <Section title="현재 상태">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="pixel rounded-sm bg-panel-2 px-2 py-0.5 text-[12px]">캐릭터: {actor ? ACTIVITY_LABEL[actor.activity] : "–"}</span>
-              {actor?.mode === "preview" && <span className="pixel rounded-sm bg-warn/20 px-2 py-0.5 text-[11px] text-warn">애니메이션 미리보기 중</span>}
-            </div>
-            <p className="mt-1 text-[12px] text-muted">
-              캐릭터 동작은 화면 연출입니다. 실제 업무 상태는 아래 &lsquo;진행 중인 업무&rsquo;가 기준입니다.
-            </p>
-          </Section>
-
           <Section title="진행 중인 업무">
-            {mine?.activeTask ? (
-              <div className="rounded-sm bg-panel-2 p-2">
-                <div className="font-medium">{mine.activeTask.title}</div>
-                <div className="pixel text-[11px] text-muted">{TASK_STATUS_LABEL[mine.activeTask.status as TaskStatus]}</div>
+            {active ? (
+              <div className="space-y-1.5 rounded-sm border border-line bg-panel-2 p-2" data-testid="active-task">
+                <div className="font-medium leading-snug">{active.title}</div>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="pixel text-[11px] text-info">{TASK_STATUS_LABEL[active.status as TaskStatus]}</span>
+                  <span className="pixel text-[11px] text-muted tabular-nums">{active.progress}%</span>
+                </div>
+                <div className="h-1.5 overflow-hidden rounded-full bg-line">
+                  <i className="block h-full bg-ok transition-[width] duration-500" style={{ width: `${active.progress}%` }} />
+                </div>
+                <div className="text-[12px] text-muted">{active.statusMessage}</div>
+                {!workerOn && active.status === "QUEUED" && <p className="text-[12px] text-warn">실행기가 꺼져 있어 시작되지 않았습니다.</p>}
+                <button type="button" onClick={() => act(`/api/tasks/${active.id}/cancel`)} className="pixel rounded-sm border border-line px-2 py-0.5 text-[11px] text-muted hover:text-bad">
+                  {active.cancelRequested ? "취소 요청됨" : "업무 취소"}
+                </button>
               </div>
             ) : (
               <p className="text-muted">없음</p>
             )}
           </Section>
 
+          {last?.status === "FAILED" && (
+            <Section title="최근 실패">
+              <div className="space-y-1.5 rounded-sm border border-bad/40 bg-bad/5 p-2" data-testid="failed-task">
+                <div className="font-medium leading-snug">{last.title}</div>
+                <p className="text-[12px] text-bad">{last.error}</p>
+                <button type="button" onClick={() => act(`/api/tasks/${last.id}/retry`)} className="pixel rounded-sm border border-line px-2 py-0.5 text-[11px] hover:border-hi">
+                  다시 실행
+                </button>
+              </div>
+            </Section>
+          )}
+
           <Section title="최근 완료한 업무">
             {mine?.recentCompleted.length ? (
               <ul className="space-y-1">
                 {mine.recentCompleted.map((t) => (
-                  <li key={t.id} className="truncate">
-                    {t.title}
+                  <li key={t.id} className="flex items-center gap-2">
+                    <span className="min-w-0 flex-1 truncate">{t.title}</span>
+                    {t.reportId && (
+                      <button type="button" onClick={() => openReport(t.reportId)} className="pixel shrink-0 rounded-sm bg-panel-2 px-2 py-0.5 text-[11px] text-hi hover:bg-line">
+                        보고서
+                      </button>
+                    )}
                   </li>
                 ))}
               </ul>
             ) : (
               <p className="text-muted">아직 없습니다.</p>
             )}
+          </Section>
+
+          <Section title="캐릭터 상태">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="pixel rounded-sm bg-panel-2 px-2 py-0.5 text-[12px]">{actor ? ACTIVITY_LABEL[actor.activity] : "–"}</span>
+              {actor?.mode === "preview" && <span className="pixel rounded-sm bg-warn/20 px-2 py-0.5 text-[11px] text-warn">애니메이션 미리보기 중</span>}
+            </div>
+            <p className="mt-1 text-[12px] text-muted">캐릭터 동작은 서버의 업무 상태를 보여주는 화면입니다. 기준은 위의 업무 상태입니다.</p>
           </Section>
 
           <Section title="전문 분야">
@@ -125,16 +194,16 @@ export function EmployeePanel({ data, health }: { data: OfficeSnapshot | null; h
 
           <div className="grid grid-cols-2 gap-2">
             <ActionButton onClick={() => setTab("order")}>업무 지시</ActionButton>
-            <ActionButton disabled title="PHASE 2에서 연결됩니다">
+            <ActionButton onClick={() => toGame.emit("follow", id)}>카메라 따라가기</ActionButton>
+            <ActionButton disabled title="PHASE 3에서 연결됩니다">
               대화하기
             </ActionButton>
-            <ActionButton disabled title="PHASE 2에서 연결됩니다">
+            <ActionButton disabled={!mine?.recentCompleted[0]?.reportId} onClick={() => openReport(mine?.recentCompleted[0]?.reportId ?? null)}>
               보고서 {mine?.reportCount ?? 0}건
             </ActionButton>
-            <ActionButton onClick={() => toGame.emit("follow", id)}>카메라 따라가기</ActionButton>
           </div>
 
-          <details open={previewOpen} onToggle={(e) => setPreviewOpen((e.target as HTMLDetailsElement).open)} className="rounded-sm border border-dashed border-line p-2">
+          <details className="rounded-sm border border-dashed border-line p-2">
             <summary className="pixel cursor-pointer text-[12px] text-muted">개발자 도구 · 애니메이션 미리보기</summary>
             <p className="mt-2 text-[12px] text-warn">미리보기는 캐릭터 동작 확인용이며 실제 업무가 아닙니다.</p>
             <div className="mt-2 grid grid-cols-3 gap-1">
@@ -155,15 +224,29 @@ export function EmployeePanel({ data, health }: { data: OfficeSnapshot | null; h
           </details>
         </div>
       ) : (
-        <form className="space-y-2 p-3 text-[13px]" onSubmit={(e) => e.preventDefault()}>
+        <form className="space-y-2 p-3 text-[13px]" onSubmit={submit}>
           <label className="block">
-            <span className="pixel text-[12px] text-muted">관련 프로젝트</span>
-            <select
-              id="order-project"
-              value={projectId}
-              onChange={(e) => setProjectId(e.target.value)}
-              className="mt-1 w-full rounded-sm border-2 border-line bg-panel-2 px-2 py-1.5"
-            >
+            <span className="pixel text-[12px] text-muted">업무 유형</span>
+            <select id="order-type" value={type} onChange={(e) => setType(e.target.value)} className="mt-1 w-full rounded-sm border-2 border-line bg-panel-2 px-2 py-1.5">
+              {TASK_TYPES.map((t) => (
+                <option key={t.id} value={t.id} disabled={!t.supported}>
+                  {t.label}
+                  {t.supported ? "" : " (아직 불가)"}
+                </option>
+              ))}
+            </select>
+          </label>
+          {TASK_TYPES.filter((t) => !t.supported).length > 0 && (
+            <p className="text-[11px] text-muted">
+              실행 불가 유형: {TASK_TYPES.filter((t) => !t.supported).map((t) => `${t.label} — ${t.needs}`).join(" / ")}
+            </p>
+          )}
+          {typeDef?.wantsWeb && !health?.ai.webSearch && (
+            <p className="rounded-sm bg-warn/10 p-2 text-[12px] text-warn">웹 검색이 꺼져 있어 최신 시장·가격 정보는 조사하지 못합니다. 보고서에 그 한계가 표시됩니다.</p>
+          )}
+          <label className="block">
+            <span className="pixel text-[12px] text-muted">관련 프로젝트 (정보가 자동으로 전달됩니다)</span>
+            <select id="order-project" value={projectId} onChange={(e) => setProjectId(e.target.value)} className="mt-1 w-full rounded-sm border-2 border-line bg-panel-2 px-2 py-1.5">
               <option value="">선택 안 함</option>
               {data?.projects.map((p) => (
                 <option key={p.id} value={p.id}>
@@ -178,23 +261,19 @@ export function EmployeePanel({ data, health }: { data: OfficeSnapshot | null; h
               id="order-text"
               value={instruction}
               onChange={(e) => setInstruction(e.target.value)}
-              rows={5}
+              rows={6}
               placeholder="예: Number Maze라는 퍼즐 게임의 수익화 전략을 분석하고 장단점을 보고서로 작성해줘."
               className="mt-1 w-full resize-y rounded-sm border-2 border-line bg-panel-2 px-2 py-1.5"
             />
           </label>
-          <button
-            type="submit"
-            disabled={!engineReady || !instruction.trim()}
-            className="pixel w-full rounded-sm bg-hi py-2 text-[13px] font-bold text-void disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            업무 지시하기
+          <button type="submit" disabled={busy || !instruction.trim() || !typeDef?.supported} className="pixel w-full rounded-sm bg-hi py-2 text-[13px] font-bold text-void disabled:cursor-not-allowed disabled:opacity-40">
+            {busy ? "등록 중…" : "업무 지시하기"}
           </button>
-          {!engineReady && (
-            <p className="rounded-sm bg-warn/10 p-2 text-[12px] text-warn">
-              실제 AI 업무 실행 엔진은 PHASE 2에서 연결됩니다. 지금은 업무를 저장하거나 실행하지 않으며, 가짜 결과도 만들지 않습니다.
-            </p>
-          )}
+          <p className="text-[11px] leading-relaxed text-muted">
+            지시는 DB에 저장되고 실행기가 Claude({health?.ai.model ?? "–"})로 처리합니다. 실패하면 실제 오류가 그대로 표시되며 결과를 지어내지 않습니다.
+            {!workerOn && " 지금은 실행기가 꺼져 있습니다."}
+            {workerOn && !health?.ai.keyConfigured && " 지금은 API 키가 없어 실행하면 실패로 기록됩니다."}
+          </p>
         </form>
       )}
     </aside>

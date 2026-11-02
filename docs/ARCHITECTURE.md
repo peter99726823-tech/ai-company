@@ -14,8 +14,8 @@
 │ React UI (Next.js)                       │  HTTP  │ Next.js Route Handlers                    │
 │  TopBar · EmployeePanel · BottomDock     │◀──────▶│  /api/office   스냅샷                     │
 │        │ zustand store                   │  SSE   │  /api/health   연결 상태                  │
-│        ▼                                 │◀───────│  /api/events   이벤트 스트림  (PHASE 2)   │
-│ bridge (typed bus)                       │        │  /api/tasks    업무 생성      (PHASE 2)   │
+│        ▼                                 │◀───────│  /api/events   이벤트 스트림 (SSE)        │
+│ bridge (typed bus)                       │        │  /api/tasks    업무 생성·취소·재시도      │
 │        ▼                                 │        │            │                              │
 │ Phaser OfficeScene                       │        │            ▼                              │
 │  맵 · A* 이동 · 애니메이션 · 카메라        │        │  SQLite (WAL)  ◀──────▶  Worker 프로세스  │
@@ -33,13 +33,13 @@
 | 모듈 | 위치 | 역할 | 상태 |
 |---|---|---|---|
 | Office Game Engine | `src/game/` | 맵, A* 경로, 충돌, 픽셀 캐릭터, 카메라 | PHASE 1 ✅ |
-| Employee Manager | `src/domain/employees.ts`, `employees` 테이블 | 직원 9명 프로필, 외형, 책상 | PHASE 1 ✅ (프롬프트는 2) |
+| Employee Manager | `src/domain/employees.ts`, `src/server/ai/prompts.ts` | 직원 9명 프로필, 외형, 책상, 버전별 시스템 프롬프트 | ✅ |
 | Project Manager | `projects` 테이블, `/api/office` | 프로젝트 정보 | 조회만 ✅, 편집은 2 |
-| Event Logger | `task_events` 테이블 | 업무 이벤트 기록 | 스키마 ✅, 기록은 2 |
-| AI Agent Engine | `src/server/ai/` | Claude 호출, 직원별 시스템 프롬프트, 보고서 생성 | PHASE 2 |
-| Task Orchestrator | `worker/` | 대기→계획→실행→완료/실패, 재시도, 취소, 선점 | PHASE 2 |
-| Report Manager | `reports` 테이블 | 보고서 저장, 조회 | PHASE 2 |
-| Cost Tracker | `api_usage` 테이블 | 실제 사용량 × 가격표 = 비용, 일일 한도 | PHASE 2 |
+| Event Logger | `src/server/tasks/service.ts` (`transition`) | 상태 변경과 이벤트를 한 트랜잭션으로 기록 | ✅ |
+| AI Agent Engine | `src/server/ai/engine.ts` | Claude 스트리밍 호출, 진행 신호, 오류 분류 | ✅ |
+| Task Orchestrator | `src/server/tasks/runner.ts`, `worker/index.ts` | 선점, 실행, 재시도, 취소, 실행기 중단 처리 | ✅ |
+| Report Manager | `reports` 테이블, `/api/reports/[id]`, `ReportModal` | 보고서 저장·구조화·열람 | ✅ |
+| Cost Tracker | `src/server/ai/pricing.ts`, `api_usage` | 실제 토큰 사용량 × 가격표 = 추정 비용, 일일 한도 | ✅ |
 | Approval Manager | `approvals` 테이블 | 승인, 수정 요청, 후속 업무 | PHASE 3 |
 | Meeting | `meetings`, `meeting_participants` | 순차 발언, 호출 수·비용 상한 | PHASE 3 |
 | Scheduler | `worker/` | 반복 업무, 자동 모드 한도 | PHASE 4 |
@@ -75,7 +75,7 @@ ai-company/
    └─ proxy.ts             APP_PASSWORD 설정 시 Basic 인증
 ```
 
-## 캐릭터 상태와 서버 상태의 연결 (PHASE 2)
+## 캐릭터 상태와 서버 상태의 연결
 
 | 서버 이벤트 | 캐릭터 동작 | 말풍선 |
 |---|---|---|
@@ -89,6 +89,8 @@ ai-company/
 | MEETING_STARTED / ENDED | 회의실 좌석 → meeting / 복귀 | 실제 발언 요약 |
 
 진행률(`progress`)은 서버가 아는 단계(계획, 호출 시작, 스트리밍 수신량, 저장)로만 올립니다. 시간 경과로 채우지 않습니다.
+
+구현: `src/hooks/useTaskDriver.ts`가 DB 스냅샷의 업무 상태에서 "원하는 캐릭터 상태"를 계산해 게임에 명령합니다. 이벤트를 하나씩 재생하는 방식이 아니라 저장된 상태에서 계산하므로, 새로고침이나 재연결 후에도 캐릭터가 올바른 위치로 돌아옵니다. 업무가 있는 직원은 1.8배 빠르게 걷습니다.
 
 ## 데이터베이스
 

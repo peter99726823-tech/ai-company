@@ -73,3 +73,76 @@ body {
     transition: none !important;
   }
 }
+
+/* AI report body (sanitized markdown) */
+.report h1,
+.report h2 {
+  font-family: var(--font-pixel);
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--color-hi);
+  margin: 1.2em 0 0.4em;
+  padding-bottom: 0.2em;
+  border-bottom: 1px solid var(--color-line);
+}
+.report h3 {
+  font-weight: 700;
+  margin: 1em 0 0.3em;
+}
+.report p,
+.report ul,
+.report ol,
+.report table,
+.report blockquote,
+.report pre {
+  margin: 0.5em 0;
+}
+.report ul {
+  list-style: disc;
+  padding-left: 1.3em;
+}
+.report ol {
+  list-style: decimal;
+  padding-left: 1.3em;
+}
+.report table {
+  display: block;
+  overflow-x: auto;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.report th,
+.report td {
+  border: 1px solid var(--color-line);
+  padding: 4px 8px;
+  text-align: left;
+}
+.report th {
+  background: var(--color-panel-2);
+}
+.report code {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  background: var(--color-panel-2);
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+.report pre {
+  background: var(--color-panel-2);
+  padding: 8px;
+  overflow-x: auto;
+  border-radius: 4px;
+}
+.report pre code {
+  background: none;
+  padding: 0;
+}
+.report blockquote {
+  border-left: 3px solid var(--color-warn);
+  padding-left: 8px;
+  color: var(--color-warn);
+}
+.report a {
+  color: var(--color-info);
+  text-decoration: underline;
+}

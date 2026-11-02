@@ -2,15 +2,23 @@
 
 import { useState } from "react";
 import { useOffice } from "@/store/officeStore";
+import { toGame } from "@/game/bridge";
 import { EMPLOYEE_BY_ID } from "@/domain/employees";
 import { TASK_STATUS_LABEL, type TaskStatus } from "@/domain/types";
 import type { OfficeSnapshot } from "@/server/services/office";
 
-const time = (ms: number) => new Date(ms).toLocaleTimeString("ko-KR", { hour12: false });
+const time = (ms: number) => {
+  const d = new Date(ms);
+  return [d.getHours(), d.getMinutes(), d.getSeconds()].map((n) => String(n).padStart(2, "0")).join(":");
+};
 
 export function BottomDock({ data, error }: { data: OfficeSnapshot | null; error: string | null }) {
   const [tab, setTab] = useState<"events" | "movement">("events");
   const movements = useOffice((s) => s.movements);
+  const live = useOffice((s) => s.liveEvents);
+  const openReport = useOffice((s) => s.openReport);
+  // Live SSE events first, then whatever the snapshot has (dedup by id, newest first).
+  const events = [...new Map([...live, ...(data?.recentEvents ?? [])].map((e) => [e.id, e])).values()].sort((a, b) => b.id - a.id).slice(0, 80);
 
   return (
     <div className="grid h-full min-h-0 grid-cols-1 gap-2 overflow-y-auto border-t-2 border-line bg-panel p-2 lg:grid-cols-[1.6fr_1fr_1fr]">
@@ -28,19 +36,19 @@ export function BottomDock({ data, error }: { data: OfficeSnapshot | null; error
       >
         {error && <p className="mb-1 text-[12px] text-bad">{error}</p>}
         {tab === "events" ? (
-          data?.recentEvents.length ? (
-            <ol className="font-mono text-[12px]">
-              {data.recentEvents.map((e) => (
+          events.length ? (
+            <ol className="font-mono text-[12px]" data-testid="event-log">
+              {events.map((e) => (
                 <li key={e.id} className="grid grid-cols-[4.5rem_4rem_8rem_1fr] gap-2 border-b border-line/60 py-0.5">
                   <span className="text-muted">{time(e.createdAt)}</span>
                   <span>{e.employeeId ? EMPLOYEE_BY_ID[e.employeeId]?.name : "–"}</span>
-                  <span className="text-info">{e.type}</span>
+                  <span className={e.type === "TASK_FAILED" ? "text-bad" : e.type === "TASK_COMPLETED" ? "text-ok" : "text-info"}>{e.type}</span>
                   <span className="truncate">{e.message}</span>
                 </li>
               ))}
             </ol>
           ) : (
-            <Empty>아직 업무 이벤트가 없습니다. 실제 업무 실행은 PHASE 2에서 연결되며, 그 전에는 이곳에 아무것도 지어내 표시하지 않습니다.</Empty>
+            <Empty>아직 업무 이벤트가 없습니다. 직원을 클릭해 업무를 지시하면 실행 과정이 이곳에 실시간으로 기록됩니다.</Empty>
           )
         ) : movements.length ? (
           <ol className="text-[12px]">
@@ -60,8 +68,15 @@ export function BottomDock({ data, error }: { data: OfficeSnapshot | null; error
         {data?.recentCompleted.length ? (
           <ul className="space-y-1 text-[12px]">
             {data.recentCompleted.map((t) => (
-              <li key={t.id} className="truncate">
-                <span className="text-muted">{EMPLOYEE_BY_ID[t.employeeId]?.name}</span> {t.title}
+              <li key={t.id} className="flex items-center gap-2">
+                <span className="min-w-0 flex-1 truncate">
+                  <span className="text-muted">{EMPLOYEE_BY_ID[t.employeeId]?.name}</span> {t.title}
+                </span>
+                {t.reportId && (
+                  <button type="button" onClick={() => openReport(t.reportId)} className="pixel shrink-0 rounded-sm bg-panel px-2 text-[11px] text-hi hover:bg-line">
+                    보고서
+                  </button>
+                )}
               </li>
             ))}
           </ul>
@@ -74,8 +89,12 @@ export function BottomDock({ data, error }: { data: OfficeSnapshot | null; error
         {data?.attention.length ? (
           <ul className="space-y-1 text-[12px]">
             {data.attention.map((t) => (
-              <li key={t.id} className="truncate">
-                <span className={t.status === "FAILED" ? "text-bad" : "text-hi"}>{TASK_STATUS_LABEL[t.status as TaskStatus]}</span> {t.title}
+              <li key={t.id}>
+                <button type="button" onClick={() => toGame.emit("select", t.employeeId)} className="w-full truncate text-left hover:text-hi" title={t.error ?? ""}>
+                  <span className={t.status === "FAILED" ? "text-bad" : "text-hi"}>{TASK_STATUS_LABEL[t.status as TaskStatus]}</span>{" "}
+                  <span className="text-muted">{EMPLOYEE_BY_ID[t.employeeId]?.name}</span> {t.title}
+                </button>
+                {t.error && <div className="truncate pl-2 text-[11px] text-muted">{t.error}</div>}
               </li>
             ))}
           </ul>

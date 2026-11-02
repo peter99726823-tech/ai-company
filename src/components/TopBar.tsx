@@ -4,11 +4,11 @@ import { useEffect, useState } from "react";
 import { useOffice, type GameSpeed } from "@/store/officeStore";
 import { toGame } from "@/game/bridge";
 import type { OfficeSnapshot } from "@/server/services/office";
-import type { Health } from "@/hooks/useOfficeData";
+import type { Health, LiveState } from "@/hooks/useOfficeData";
 
 const SPEEDS: GameSpeed[] = [0.5, 1, 2, 4];
 
-export function TopBar({ data, health }: { data: OfficeSnapshot | null; health: Health | null }) {
+export function TopBar({ data, health, live }: { data: OfficeSnapshot | null; health: Health | null; live: LiveState }) {
   const speed = useOffice((s) => s.speed);
   const setSpeed = useOffice((s) => s.setSpeed);
   const [now, setNow] = useState<Date | null>(null);
@@ -22,13 +22,16 @@ export function TopBar({ data, health }: { data: OfficeSnapshot | null; health: 
   const ai = health?.ai;
   const aiState = !health
     ? { label: "확인 중", color: "bg-muted" }
-    : !ai?.keyConfigured
-      ? { label: "API 키 없음", color: "bg-bad" }
-      : !ai.engineConnected
-        ? { label: "키 설정됨 · 엔진 미연결", color: "bg-warn" }
-        : ai.verified
-          ? { label: "연결됨", color: "bg-ok" }
-          : { label: "검증 전", color: "bg-warn" };
+    : !ai?.engineConnected
+      ? { label: "실행기 꺼짐", color: "bg-bad" }
+      : !ai.keyConfigured
+        ? { label: "API 키 없음", color: "bg-bad" }
+        : ai.lastError
+          ? { label: "마지막 호출 실패", color: "bg-bad" }
+          : ai.verified
+            ? { label: "연결됨", color: "bg-ok" }
+            : { label: "키 설정됨 · 검증 전", color: "bg-warn" };
+  const liveLabel = live === "live" ? { t: "실시간", c: "bg-ok" } : live === "connecting" ? { t: "연결 중", c: "bg-muted" } : { t: "재연결 중", c: "bg-warn" };
 
   return (
     <header className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b-2 border-line bg-panel px-3 py-2">
@@ -49,8 +52,13 @@ export function TopBar({ data, health }: { data: OfficeSnapshot | null; health: 
         <span className="pixel flex items-center gap-1.5 rounded-sm border border-line bg-panel-2 px-2 py-1" title={ai?.message ?? ""}>
           <i className={`inline-block h-2 w-2 rounded-full ${aiState.color}`} />
           AI {aiState.label}
+          {ai?.model && <span className="text-muted">· {ai.model}</span>}
         </span>
-        <span className="pixel rounded-sm border border-line bg-panel-2 px-2 py-1 tabular-nums" title="오늘 기록된 실제 API 사용량 기준">
+        <span className="pixel flex items-center gap-1.5 rounded-sm border border-line bg-panel-2 px-2 py-1" title="서버 업무 이벤트 스트림 연결 상태">
+          <i className={`inline-block h-2 w-2 rounded-full ${liveLabel.c}`} />
+          {liveLabel.t}
+        </span>
+        <span className="pixel rounded-sm border border-line bg-panel-2 px-2 py-1 tabular-nums" title="오늘 기록된 실제 API 사용량 × 가격표 (추정치, 실제 청구액은 콘솔 확인)">
           오늘 비용 ${data ? data.todayCost.usd.toFixed(2) : "–"}
           <span className="text-muted">
             {" "}
