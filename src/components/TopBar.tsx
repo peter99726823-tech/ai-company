@@ -22,6 +22,8 @@ export function TopBar({ data, health, live }: { data: OfficeSnapshot | null; he
   const ai = health?.ai;
   const aiState = !health
     ? { label: "확인 중", color: "bg-muted" }
+    : health.lite
+      ? { label: "붙여넣기 모드 (무료)", color: "bg-ok" }
     : !ai?.engineConnected
       ? { label: "실행기 꺼짐", color: "bg-bad" }
       : !ai.keyConfigured
@@ -31,7 +33,7 @@ export function TopBar({ data, health, live }: { data: OfficeSnapshot | null; he
           : ai.verified
             ? { label: "연결됨", color: "bg-ok" }
             : { label: "키 설정됨 · 검증 전", color: "bg-warn" };
-  const liveLabel = live === "live" ? { t: "실시간", c: "bg-ok" } : live === "connecting" ? { t: "연결 중", c: "bg-muted" } : { t: "재연결 중", c: "bg-warn" };
+  const liveLabel = health?.lite ? { t: "자동 저장", c: "bg-ok" } : live === "live" ? { t: "실시간", c: "bg-ok" } : live === "connecting" ? { t: "연결 중", c: "bg-muted" } : { t: "재연결 중", c: "bg-warn" };
 
   return (
     <header className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b-2 border-line bg-panel px-3 py-2">
@@ -52,7 +54,7 @@ export function TopBar({ data, health, live }: { data: OfficeSnapshot | null; he
         <span className="pixel flex items-center gap-1.5 rounded-sm border border-line bg-panel-2 px-2 py-1" title={ai?.message ?? ""}>
           <i className={`inline-block h-2 w-2 rounded-full ${aiState.color}`} />
           AI {aiState.label}
-          {ai?.model && <span className="text-muted">· {ai.model}</span>}
+          {ai?.model && !health?.lite && <span className="text-muted">· {ai.model}</span>}
         </span>
         <span className="pixel flex items-center gap-1.5 rounded-sm border border-line bg-panel-2 px-2 py-1" title="서버 업무 이벤트 스트림 연결 상태">
           <i className={`inline-block h-2 w-2 rounded-full ${liveLabel.c}`} />

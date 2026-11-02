@@ -1,4 +1,5 @@
-// Builds a single self-contained HTML page of the office screen (no server). → preview/dist/index.html
+// Builds the link version: one self-contained HTML page (UI + Phaser + SQLite-in-WebAssembly + fonts).
+//   node lite/build.mjs   →  lite/dist/index.html
 import { build } from "esbuild";
 import postcss from "postcss";
 import tailwind from "@tailwindcss/postcss";
@@ -6,21 +7,33 @@ import fs from "node:fs";
 import path from "node:path";
 
 const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..");
-const out = path.join(root, "preview/dist");
+const out = path.join(root, "lite/dist");
 fs.mkdirSync(out, { recursive: true });
 
+const swap = {
+  name: "lite-swap",
+  setup(b) {
+    // Shared server code imports the Node DB client; the link version uses sql.js instead.
+    b.onResolve({ filter: /(^|\/)db\/client$/ }, () => ({ path: path.join(root, "lite/client.ts") }));
+    b.onResolve({ filter: /^@\/hooks\/useOfficeData$/ }, () => ({ path: path.join(root, "lite/useOfficeDataLite.ts") }));
+    b.onResolve({ filter: /^(server-only|node:crypto)$/ }, () => ({ path: path.join(root, "lite/shims.ts") }));
+  },
+};
+
 const js = await build({
-  entryPoints: [path.join(root, "preview/entry.tsx")],
+  entryPoints: [path.join(root, "lite/entry.tsx")],
   bundle: true,
   minify: true,
   format: "iife",
+  platform: "browser",
   target: "es2020",
   write: false,
   jsx: "automatic",
   tsconfig: path.join(root, "tsconfig.json"),
-  alias: { "@/hooks/useOfficeData": path.join(root, "preview/useOfficeDataStatic.ts") },
-  define: { "process.env.NODE_ENV": '"production"' },
-  loader: { ".json": "json" },
+  plugins: [swap],
+  external: ["fs", "path", "crypto"], // only referenced on sql.js's Node code path
+  define: { "process.env.NODE_ENV": '"production"', "process.env.AI_MAX_CALLS_PER_TASK": '"3"' },
+  loader: { ".wasm": "binary", ".sql": "text", ".json": "json" },
   logLevel: "warning",
 });
 const jsText = js.outputFiles[0].text.replaceAll("</script", "<\\/script");
@@ -39,4 +52,4 @@ const html = `<title>AI 회사 시뮬레이터</title>
 <script>${jsText}</script>
 `;
 fs.writeFileSync(path.join(out, "index.html"), html);
-console.log(`preview/dist/index.html ${(html.length / 1024 / 1024).toFixed(2)} MB`);
+console.log(`lite/dist/index.html ${(html.length / 1024 / 1024).toFixed(2)} MB`);

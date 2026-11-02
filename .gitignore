@@ -6,4 +6,4 @@ data/*.db*
 next-env.d.ts
 *.tsbuildinfo
 e2e/out
-preview/dist
+lite/dist

@@ -6,6 +6,8 @@ import type { TaskEventRow } from "@/server/db/schema";
 import { useOffice } from "@/store/officeStore";
 
 export interface Health {
+  /** The link version (browser-only, paste mode only). */
+  lite?: boolean;
   db: { ok: boolean; error: string | null };
   ai: {
     keyConfigured: boolean;

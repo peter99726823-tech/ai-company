@@ -50,12 +50,14 @@ export function transition(
     const conds = [eq(s.tasks.id, taskId)];
     if (opts.from) conds.push(inArray(s.tasks.status, opts.from));
     if (opts.leaseOwner) conds.push(eq(s.tasks.leaseOwner, opts.leaseOwner));
-    const res = tx
+    // RETURNING works the same on better-sqlite3 (server) and sql.js (browser link version).
+    const changed = tx
       .update(s.tasks)
       .set({ ...opts.patch, updatedAt: Date.now() })
       .where(and(...conds))
-      .run();
-    if (res.changes !== 1) return false;
+      .returning({ id: s.tasks.id })
+      .all();
+    if (changed.length !== 1) return false;
     const t = tx.select({ employeeId: s.tasks.employeeId, status: s.tasks.status }).from(s.tasks).where(eq(s.tasks.id, taskId)).get()!;
     recordEvent(tx as unknown as DB, { ...opts.event, taskId, employeeId: t.employeeId, status: t.status });
     return true;
