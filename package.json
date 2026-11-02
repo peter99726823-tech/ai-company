@@ -12,7 +12,8 @@
     "test": "tsx --test tests/*.test.ts",
     "typecheck": "tsc --noEmit",
     "e2e": "node e2e/phase1.mjs",
-    "db:generate": "drizzle-kit generate"
+    "db:generate": "drizzle-kit generate",
+    "preview:build": "node preview/build.mjs"
   },
   "dependencies": {
     "better-sqlite3": "^13.0.3",
