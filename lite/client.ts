@@ -10,8 +10,9 @@ import wasm from "../node_modules/sql.js/dist/sql-wasm.wasm";
 import m0 from "../drizzle/0000_init.sql";
 import m1 from "../drizzle/0001_task_cancel.sql";
 import m2 from "../drizzle/0002_meetings_manual.sql";
+import m3 from "../drizzle/0003_chat.sql";
 
-const MIGRATIONS = [m0, m1, m2];
+const MIGRATIONS = [m0, m1, m2, m3];
 
 export type DB = SQLJsDatabase<typeof schema>;
 let raw: Database | null = null;

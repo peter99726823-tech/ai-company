@@ -25,6 +25,11 @@ export function Toasts() {
           <div className="min-w-0 flex-1">
             <b className="pixel text-[12px]">{t.employeeId ? EMPLOYEE_BY_ID[t.employeeId]?.name : ""}</b> <span className="text-muted">{t.text}</span>
             <div className="mt-1 flex gap-2">
+              {t.chat && t.employeeId && (
+                <button type="button" onClick={() => (useOffice.getState().openChat(t.employeeId!), dismiss(t.id))} className="pixel rounded-sm bg-hi px-2 py-0.5 text-[11px] font-bold text-void">
+                  대화 열기
+                </button>
+              )}
               {t.meetingId && (
                 <button type="button" onClick={() => (useOffice.getState().openMeeting(t.meetingId!), dismiss(t.id))} className="pixel rounded-sm bg-hi px-2 py-0.5 text-[11px] font-bold text-void">
                   회의록 열기

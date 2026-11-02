@@ -10,6 +10,7 @@ import { Toasts } from "@/components/Toasts";
 import { MeetingDialog } from "@/components/MeetingDialog";
 import { MeetingModal } from "@/components/MeetingModal";
 import { ManualTaskModal } from "@/components/ManualTaskModal";
+import { ChatModal } from "@/components/ChatModal";
 import { useOfficeData } from "@/hooks/useOfficeData";
 import { useTaskDriver } from "@/hooks/useTaskDriver";
 import { useOffice } from "@/store/officeStore";
@@ -50,10 +51,11 @@ export function App({ storeKind }: { storeKind: "artifact" | "local" }) {
       <div className="h-[clamp(130px,22vh,210px)]">
         <BottomDock data={data} error={error} />
       </div>
-      <ReportModal />
+      <ReportModal data={data} health={health} reload={reload} />
       <MeetingDialog data={data} health={health} reload={reload} />
       <MeetingModal health={health} reload={reload} />
       <ManualTaskModal reload={reload} />
+      <ChatModal data={data} health={health} reload={reload} />
     </main>
   );
 }

@@ -16,6 +16,7 @@ export interface Toast {
   text: string;
   reportId?: string | null;
   meetingId?: string | null;
+  chat?: boolean;
   employeeId?: string | null;
 }
 
@@ -33,6 +34,7 @@ interface OfficeState {
   meetingId: string | null;
   meetingDialog: boolean;
   manualTaskId: string | null;
+  chatEmployeeId: string | null;
   toasts: Toast[];
   setReady: () => void;
   setSelected: (id: string | null) => void;
@@ -45,6 +47,7 @@ interface OfficeState {
   openMeeting: (id: string | null) => void;
   setMeetingDialog: (v: boolean) => void;
   openManual: (taskId: string | null) => void;
+  openChat: (employeeId: string | null) => void;
   toast: (t: Omit<Toast, "id">) => void;
   dismissToast: (id: number) => void;
 }
@@ -63,6 +66,7 @@ export const useOffice = create<OfficeState>((set) => ({
   meetingId: null,
   meetingDialog: false,
   manualTaskId: null,
+  chatEmployeeId: null,
   toasts: [],
   setReady: () => set({ ready: true }),
   setSelected: (id) => set({ selectedId: id }),
@@ -75,8 +79,16 @@ export const useOffice = create<OfficeState>((set) => ({
       const toasts = [...s.toasts];
       // 대표 알림: completion and failure are announced; everything else goes to the log only.
       if (e.type === "TASK_COMPLETED") {
-        const data = e.data ? (JSON.parse(e.data) as { reportId?: string; meetingId?: string | null }) : {};
-        toasts.push({ id: ++toastSeq, tone: "ok", text: e.message, reportId: data.meetingId ? null : (data.reportId ?? null), meetingId: data.meetingId ?? null, employeeId: e.employeeId });
+        const data = e.data ? (JSON.parse(e.data) as { reportId?: string; meetingId?: string | null; conversationId?: string }) : {};
+        toasts.push({
+          id: ++toastSeq,
+          tone: "ok",
+          text: e.message,
+          reportId: data.meetingId ? null : (data.reportId ?? null),
+          meetingId: data.meetingId ?? null,
+          chat: !!data.conversationId,
+          employeeId: e.employeeId,
+        });
       } else if (e.type === "TASK_FAILED") {
         toasts.push({ id: ++toastSeq, tone: "bad", text: e.message, employeeId: e.employeeId });
       }
@@ -86,6 +98,7 @@ export const useOffice = create<OfficeState>((set) => ({
   openMeeting: (meetingId) => set({ meetingId }),
   setMeetingDialog: (meetingDialog) => set({ meetingDialog }),
   openManual: (manualTaskId) => set({ manualTaskId }),
+  openChat: (chatEmployeeId) => set({ chatEmployeeId }),
   toast: (t) => set((s) => ({ toasts: [...s.toasts, { ...t, id: ++toastSeq }].slice(-4) })),
   dismissToast: (id) => set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),
 }));

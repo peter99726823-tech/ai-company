@@ -4,7 +4,8 @@
  * - finalizeTask: turns an AI answer into a saved report (and meeting record) and completes the task
  */
 import { randomUUID } from "node:crypto";
-import { and, asc, eq, sql } from "drizzle-orm";
+import { and, asc, desc, eq, sql } from "drizzle-orm";
+import { EMPLOYEE_BY_ID } from "@/domain/employees";
 import type { DB } from "../db/client";
 import * as s from "../db/schema";
 import { transition, recordEvent, TaskInputError } from "./service";
@@ -46,6 +47,21 @@ export function buildPrompts(db: DB, task: Task, webSearch: boolean): { system: 
     .orderBy(sql`${s.employeePrompts.version} desc`)
     .get()?.p;
   if (!system) throw new TaskInputError("이 직원의 시스템 프롬프트가 DB에 없습니다.");
+  if (task.type === "CHAT" && task.conversationId) {
+    // Conversation: same persona, but a reply instead of a report. Recent history is included.
+    const history = db
+      .select()
+      .from(s.messages)
+      .where(eq(s.messages.conversationId, task.conversationId))
+      .orderBy(asc(s.messages.createdAt))
+      .all()
+      .slice(-12);
+    const name = EMPLOYEE_BY_ID[task.employeeId]?.name ?? "직원";
+    const lines = history.map((m) => `${m.role === "ceo" ? "대표" : name}: ${m.content}`).join("\n\n");
+    const chatSystem = `${system.split("보고서 형식")[0].trim()}\n\n지금은 대표와 1:1로 대화 중입니다. 보고서 형식을 쓰지 말고, 당신의 전문 분야 관점에서 짧고 분명하게 답하세요. 모르는 것은 모른다고 하고, 더 깊은 분석이 필요하면 업무로 지시해 달라고 제안하세요.`;
+    const ctx = project ? `# 이 대화의 프로젝트\n${project.name}: ${project.description} (단계: ${project.stage}, 목표: ${project.goal})\n\n` : "";
+    return { system: chatSystem, user: `${ctx}# 지금까지의 대화\n${lines}\n\n# 할 일\n대표의 마지막 말에 ${name}으로서 답하세요. 답변만 쓰세요.` };
+  }
   const def = TASK_TYPE_BY_ID[task.type] ?? TASK_TYPE_BY_ID.GENERAL;
   const parts: string[] = [];
   parts.push(`# 회사\n${company?.name ?? ""} — ${company?.mission ?? ""}`);
@@ -60,6 +76,15 @@ export function buildPrompts(db: DB, task: Task, webSearch: boolean): { system: 
       ? "# 도구\n웹 검색 도구를 쓸 수 있습니다. 최신 가격·경쟁사·시장 정보는 검색해서 확인하고, 참고한 자료에 실제 URL을 적으세요."
       : `# 도구\n이번 업무에서는 웹 검색을 쓸 수 없습니다. 최신 정보는 조사하지 못했다고 밝히고, '참고한 자료'에는 "웹 검색 미사용"이라고 적은 뒤 대표가 확인해야 할 항목을 쓰세요.${def.wantsWeb ? " 이 업무는 최신 시장 정보가 중요하므로 그 한계를 요약에도 밝히세요." : ""}`,
   );
+  if (task.parentTaskId) {
+    // Follow-up work (수정 요청, 추가 분석, 전달, 회의 후속): give the earlier result as input.
+    const prev = db.select().from(s.reports).where(eq(s.reports.taskId, task.parentTaskId)).orderBy(desc(s.reports.createdAt)).get();
+    if (prev) {
+      const author = EMPLOYEE_BY_ID[prev.employeeId]?.name ?? prev.employeeId;
+      const body = prev.body.length > 12000 ? `${prev.body.slice(0, 12000)}\n…(이하 생략)` : prev.body;
+      parts.push(`# 이전 결과물 (${author} 작성, 이번 업무의 입력 자료)\n${body}`);
+    }
+  }
   parts.push(`# 대표의 지시\n${task.instruction}`);
   return { system, user: parts.join("\n\n") };
 }
@@ -101,6 +126,20 @@ export function finalizeTask(
   text: string,
   opts: { from: TaskStatus[]; leaseOwner?: string; sources?: { title: string; url: string }[]; truncated?: boolean; via: "api" | "manual"; usageNote?: string },
 ): string {
+  if (task.type === "CHAT" && task.conversationId) {
+    const msgId = `msg_${randomUUID().slice(0, 8)}`;
+    db.transaction((tx) => {
+      tx.insert(s.messages).values({ id: msgId, conversationId: task.conversationId!, role: "employee", content: text.trim(), taskId: task.id }).run();
+      const moved = transition(tx as unknown as DB, task.id, {
+        from: opts.from,
+        leaseOwner: opts.leaseOwner,
+        patch: { status: "COMPLETED", progress: 100, finishedAt: Date.now(), statusMessage: "답변 완료", leaseOwner: null, leaseUntil: null },
+        event: { type: "TASK_COMPLETED", message: `대화 답변${opts.via === "manual" ? " (claude.ai 붙여넣기)" : ""}${opts.usageNote ? ` · ${opts.usageNote}` : ""}`, data: { messageId: msgId, conversationId: task.conversationId } },
+      });
+      if (!moved) throw new TaskInputError("업무 상태가 바뀌어 저장하지 않았습니다 (이미 끝났거나 취소됨).");
+    });
+    return msgId;
+  }
   const meeting = task.type === "MEETING" && task.meetingId ? db.select().from(s.meetings).where(eq(s.meetings.id, task.meetingId)).get() : null;
   const participants = meeting ? meetingParticipants(db, meeting.id) : [];
   const parsedMeeting = meeting ? parseMeeting(text, participants.map((p) => p.employeeId)) : null;

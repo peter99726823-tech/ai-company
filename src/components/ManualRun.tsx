@@ -6,7 +6,7 @@ import { useEffect, useState } from "react";
  * Manual (free) execution: copy the prompt → paste into claude.ai → paste the answer back.
  * The server validates the answer; nothing is saved if it doesn't fit.
  */
-export function ManualRun({ taskId, onDone, meeting }: { taskId: string; onDone: () => void; meeting?: boolean }) {
+export function ManualRun({ taskId, onDone, meeting, submitLabel }: { taskId: string; onDone: () => void; meeting?: boolean; submitLabel?: string }) {
   const [prompt, setPrompt] = useState<string>("");
   const [answer, setAnswer] = useState("");
   const [copied, setCopied] = useState<"ok" | "manual" | null>(null);
@@ -80,8 +80,8 @@ export function ManualRun({ taskId, onDone, meeting }: { taskId: string; onDone:
             className="w-full resize-y rounded-sm border-2 border-line bg-void p-2 text-[12px]"
           />
           {err && <p className="mt-1 rounded-sm bg-bad/10 p-2 text-[12px] text-bad">{err}</p>}
-          <button type="button" onClick={submit} disabled={busy || answer.trim().length < 40} className="pixel mt-1 w-full rounded-sm bg-hi py-1.5 text-[13px] font-bold text-void disabled:opacity-40">
-            {busy ? "확인 중…" : meeting ? "회의록 제출" : "보고서 제출"}
+          <button type="button" onClick={submit} disabled={busy || answer.trim().length < (submitLabel ? 2 : 40)} className="pixel mt-1 w-full rounded-sm bg-hi py-1.5 text-[13px] font-bold text-void disabled:opacity-40">
+            {busy ? "확인 중…" : (submitLabel ?? (meeting ? "회의록 제출" : "보고서 제출"))}
           </button>
         </li>
       </ol>

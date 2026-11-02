@@ -6,18 +6,28 @@ import DOMPurify from "dompurify";
 import { useOffice } from "@/store/officeStore";
 import { EMPLOYEE_BY_ID } from "@/domain/employees";
 import type { ReportRow, TaskRow } from "@/server/db/schema";
+import { ReportActions } from "./ReportActions";
+import type { OfficeSnapshot } from "@/server/services/office";
+import type { Health } from "@/hooks/useOfficeData";
+
+interface Decision {
+  id: string;
+  decision: string | null;
+  note: string | null;
+  decidedAt: number | null;
+}
 
 /** Shows a saved report. The body is AI-written markdown, so it is sanitized before rendering. */
-export function ReportModal() {
+export function ReportModal({ data: office, health, reload }: { data?: OfficeSnapshot | null; health?: Health | null; reload?: () => void }) {
   const id = useOffice((s) => s.reportId);
   const close = () => useOffice.getState().openReport(null);
-  const [data, setData] = useState<{ report: ReportRow; task: TaskRow | null } | null>(null);
+  const [data, setData] = useState<{ report: ReportRow; task: TaskRow | null; decisions: Decision[]; followUps: TaskRow[] } | null>(null);
+  const [tick, setTick] = useState(0);
   const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
-    setData(null);
     setErr(null);
-    if (!id) return;
+    if (!id) return setData(null);
     fetch(`/api/reports/${id}`)
       .then(async (r) => {
         const j = await r.json();
@@ -25,7 +35,7 @@ export function ReportModal() {
         setData(j);
       })
       .catch((e) => setErr((e as Error).message));
-  }, [id]);
+  }, [id, tick]);
 
   useEffect(() => {
     if (!id) return;
@@ -65,6 +75,29 @@ export function ReportModal() {
             </details>
           )}
           <article className="report text-[14px] leading-relaxed" dangerouslySetInnerHTML={{ __html: html }} />
+          {data && (
+            <ReportActions
+              key={data.report.id}
+              reportId={data.report.id}
+              employeeId={data.report.employeeId}
+              projectId={data.report.projectId}
+              nextTasks={(() => {
+                try {
+                  return (JSON.parse(data.report.nextTasks ?? "[]") as (string | { instruction: string })[]).map((x) => (typeof x === "string" ? x : x.instruction));
+                } catch {
+                  return [];
+                }
+              })()}
+              decisions={data.decisions ?? []}
+              followUps={data.followUps ?? []}
+              projects={office?.projects ?? []}
+              apiReady={!!health?.worker.running && !!health?.ai.keyConfigured}
+              onDone={() => {
+                setTick((t) => t + 1);
+                reload?.();
+              }}
+            />
+          )}
           {data && (
             <div className="mt-4 rounded-sm border border-line p-2 text-[12px] text-muted">
               실제 웹 검색 출처:{" "}

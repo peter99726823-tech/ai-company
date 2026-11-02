@@ -213,9 +213,7 @@ export function EmployeePanel({ data, health, reload }: { data: OfficeSnapshot |
           <div className="grid grid-cols-2 gap-2">
             <ActionButton onClick={() => setTab("order")}>업무 지시</ActionButton>
             <ActionButton onClick={() => toGame.emit("follow", id)}>카메라 따라가기</ActionButton>
-            <ActionButton disabled title="PHASE 3에서 연결됩니다">
-              대화하기
-            </ActionButton>
+            <ActionButton onClick={() => useOffice.getState().openChat(id)}>대화하기</ActionButton>
             <ActionButton disabled={!mine?.recentCompleted[0]?.reportId} onClick={() => openReport(mine?.recentCompleted[0]?.reportId ?? null)}>
               보고서 {mine?.reportCount ?? 0}건
             </ActionButton>

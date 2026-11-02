@@ -86,7 +86,8 @@ export function submitManualAnswer(db: DB, taskId: string, text: string) {
   if (task.executionMode !== "manual") throw new TaskInputError("붙여넣기 방식 업무가 아닙니다.");
   if (task.status !== "QUEUED") throw new TaskInputError("이미 끝났거나 취소된 업무입니다.");
   const answer = text?.trim();
-  if (!answer || answer.length < 40) throw new TaskInputError("붙여넣은 답변이 너무 짧습니다. claude.ai 답변 전체를 복사해 붙여넣으세요.");
+  const min = task.type === "CHAT" ? 1 : 40;
+  if (!answer || answer.length < min) throw new TaskInputError("붙여넣은 답변이 너무 짧습니다. claude.ai 답변 전체를 복사해 붙여넣으세요.");
   if (answer.length > 200_000) throw new TaskInputError("답변이 너무 깁니다.");
   try {
     return finalizeTask(db, task, answer, { from: ["QUEUED"], via: "manual" });

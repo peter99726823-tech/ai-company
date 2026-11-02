@@ -13,6 +13,7 @@ import { Toasts } from "@/components/Toasts";
 import { MeetingDialog } from "@/components/MeetingDialog";
 import { MeetingModal } from "@/components/MeetingModal";
 import { ManualTaskModal } from "@/components/ManualTaskModal";
+import { ChatModal } from "@/components/ChatModal";
 
 const PhaserGame = dynamic(() => import("@/game/PhaserGame"), { ssr: false });
 
@@ -35,10 +36,11 @@ export default function Home() {
       <div className="h-[clamp(130px,22vh,210px)]">
         <BottomDock data={data} error={error} />
       </div>
-      <ReportModal />
+      <ReportModal data={data} health={health} reload={reload} />
       <MeetingDialog data={data} health={health} reload={reload} />
       <MeetingModal health={health} reload={reload} />
       <ManualTaskModal reload={reload} />
+      <ChatModal data={data} health={health} reload={reload} />
     </main>
   );
 }

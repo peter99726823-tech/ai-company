@@ -6,8 +6,10 @@ import { getDb } from "./client";
 import { getOfficeSnapshot } from "../src/server/services/office";
 import { createTask, getTaskDetail, requestCancel, retryTask, getReport, TaskInputError } from "../src/server/tasks/service";
 import { createMeeting, getMeeting, recentMeetings, decideMeeting, getManualPrompt, submitManualAnswer } from "../src/server/meetings/service";
+import { getChat, sendChat } from "../src/server/chat/service";
+import { actOnReport, type ReportAction } from "../src/server/reports/service";
 
-type Handler = (m: RegExpMatchArray, body: Record<string, unknown>) => unknown;
+type Handler = (m: RegExpMatchArray, body: Record<string, unknown>, query: URLSearchParams) => unknown;
 const listeners = new Set<() => void>();
 export const onChange = (fn: () => void) => (listeners.add(fn), () => listeners.delete(fn));
 
@@ -26,9 +28,22 @@ const GET: [RegExp, Handler][] = [
   [/^\/api\/tasks\/([\w-]+)$/, (m) => getTaskDetail(getDb() as never, m[1]) ?? notFound("업무를 찾을 수 없습니다.")],
   [/^\/api\/tasks\/([\w-]+)\/prompt$/, (m) => ({ prompt: getManualPrompt(getDb() as never, m[1]) })],
   [/^\/api\/reports\/([\w-]+)$/, (m) => getReport(getDb() as never, m[1]) ?? notFound("보고서를 찾을 수 없습니다.")],
+  [/^\/api\/chat\/([\w-]+)$/, (m, _b, q) => getChat(getDb() as never, m[1], q.get("projectId") || null)],
 ];
 
 const POST: [RegExp, Handler][] = [
+  [/^\/api\/chat\/([\w-]+)$/, (m, b) => sendChat(getDb() as never, { employeeId: m[1], projectId: (b.projectId as string) ?? null, text: String(b.text ?? ""), executionMode: "manual" })],
+  [
+    /^\/api\/reports\/([\w-]+)\/action$/,
+    (m, b) =>
+      actOnReport(getDb() as never, m[1], {
+        action: String(b.action) as ReportAction,
+        note: b.note ? String(b.note) : "",
+        targetEmployeeId: b.targetEmployeeId ? String(b.targetEmployeeId) : undefined,
+        executionMode: "manual",
+        project: (b.project as { id: string; stage?: string; nextPlan?: string }) ?? undefined,
+      }),
+  ],
   [
     /^\/api\/tasks$/,
     (_m, b) => ({
@@ -83,6 +98,7 @@ export function installRouter() {
   window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = typeof input === "string" ? input : input instanceof URL ? input.pathname : input.url;
     const path = url.startsWith("/api/") ? url.split("?")[0] : null;
+    const query = new URLSearchParams(url.split("?")[1] ?? "");
     if (!path) return original(input, init);
     const method = (init?.method ?? "GET").toUpperCase();
     const table = method === "POST" ? POST : GET;
@@ -91,9 +107,9 @@ export function installRouter() {
       if (!m) continue;
       try {
         const body = init?.body ? JSON.parse(String(init.body)) : {};
-        const out = h(m, body);
+        const out = h(m, body, query);
         if (method === "POST") listeners.forEach((fn) => fn());
-        return json(method === "POST" && /^\/api\/(tasks|meetings)$/.test(path) ? 201 : 200, out);
+        return json(method === "POST" && /^\/api\/(tasks|meetings|chat\/[\w-]+)$/.test(path) ? 201 : 200, out);
       } catch (e) {
         if (e instanceof HttpError) return json(e.status, e.body ?? { error: e.message });
         if (e instanceof TaskInputError) return json(400, { error: e.message });

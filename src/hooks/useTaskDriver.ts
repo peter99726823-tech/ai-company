@@ -63,6 +63,12 @@ export function meetingWants(meetings: OfficeSnapshot["meetings"], now: number):
 
 export function desiredCommand(id: string, b: OfficeSnapshot["byEmployee"][string], now: number): Want | null {
   const t = b.activeTask && b.activeTask.type !== "MEETING" ? b.activeTask : null;
+  if (t && t.type === "CHAT") {
+    // Chat: stay where they are and think about the answer.
+    return t.executionMode === "manual"
+      ? { go: "stay", activity: "waiting", bubble: "대표님, 답변을 붙여넣어 주세요" }
+      : { go: "stay", activity: "thinking", bubble: "대표님 질문에 답하는 중..." };
+  }
   if (t && t.executionMode === "manual") return { go: "desk", activity: "waiting", bubble: "대표님 답변 붙여넣기 대기" };
   if (t) {
     switch (t.status) {
@@ -76,7 +82,7 @@ export function desiredCommand(id: string, b: OfficeSnapshot["byEmployee"][strin
         return { go: "report", activity: "waiting", bubble: "대표 승인 대기" };
     }
   }
-  const f = b.lastFinished && b.lastFinished.type !== "MEETING" ? b.lastFinished : null;
+  const f = b.lastFinished && b.lastFinished.type !== "MEETING" && b.lastFinished.type !== "CHAT" ? b.lastFinished : null;
   if (f && f.finishedAt && now - f.finishedAt < SHOW_FINISHED_MS) {
     if (f.status === "COMPLETED") return { go: "report", activity: "reporting", bubble: "업무 완료! 보고서 제출" };
     if (f.status === "FAILED") return { go: "stay", activity: "error", bubble: "업무 실패 · 사유 확인 필요" };

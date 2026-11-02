@@ -76,6 +76,7 @@ export function createTask(
     parentTaskId?: string | null;
     executionMode?: "api" | "manual";
     meetingId?: string | null;
+    conversationId?: string | null;
     source?: string;
   },
 ) {
@@ -84,8 +85,9 @@ export function createTask(
   if (instruction.length > 20000) throw new TaskInputError("업무 내용이 너무 깁니다 (최대 20,000자).");
   const emp = db.select().from(s.employees).where(eq(s.employees.id, input.employeeId)).get();
   if (!emp) throw new TaskInputError("존재하지 않는 직원입니다.");
-  const type = input.type === "MEETING" ? "MEETING" : input.type && TASK_TYPE_BY_ID[input.type] ? input.type : "GENERAL";
-  const def = type === "MEETING" ? { label: "회의", supported: true, needs: "" } : TASK_TYPE_BY_ID[type];
+  const special: Record<string, string> = { MEETING: "회의", CHAT: "대화" };
+  const type = input.type && special[input.type] ? input.type : input.type && TASK_TYPE_BY_ID[input.type] ? input.type : "GENERAL";
+  const def = special[type] ? { label: special[type], supported: true, needs: "" } : TASK_TYPE_BY_ID[type];
   if (!def.supported) throw new TaskInputError(`아직 실행할 수 없는 업무 유형입니다. ${def.needs ?? ""}`);
   const executionMode = input.executionMode === "manual" ? "manual" : "api";
   if (input.projectId) {
@@ -107,6 +109,7 @@ export function createTask(
         projectId: input.projectId || null,
         parentTaskId: input.parentTaskId ?? null,
         meetingId: input.meetingId ?? null,
+        conversationId: input.conversationId ?? null,
         source: input.source ?? "manual",
         executionMode,
         maxCalls,
@@ -189,5 +192,7 @@ export function getReport(db: DB, id: string) {
   const report = db.select().from(s.reports).where(eq(s.reports.id, id)).get();
   if (!report) return null;
   const task = report.taskId ? getTask(db, report.taskId) : null;
-  return { report, task };
+  const decisions = db.select().from(s.approvals).where(eq(s.approvals.reportId, id)).orderBy(desc(s.approvals.createdAt), sql`rowid desc`).all();
+  const followUps = report.taskId ? db.select().from(s.tasks).where(eq(s.tasks.parentTaskId, report.taskId)).orderBy(desc(s.tasks.createdAt)).all() : [];
+  return { report, task, decisions, followUps };
 }

@@ -1,5 +1,5 @@
 import "server-only";
-import { and, desc, eq, inArray, gte, or, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, gte, ne, or, sql } from "drizzle-orm";
 import { getDb } from "../db/client";
 import * as s from "../db/schema";
 import type { EmployeeLook } from "@/domain/types";
@@ -36,7 +36,8 @@ export function getOfficeSnapshot() {
     .all()[0];
 
   const recentEvents = db.select().from(s.taskEvents).orderBy(desc(s.taskEvents.id)).limit(40).all();
-  const recentCompleted = db.select().from(s.tasks).where(eq(s.tasks.status, "COMPLETED")).orderBy(desc(s.tasks.finishedAt)).limit(8).all();
+  // Chat replies live in the chat window, not in the task lists.
+  const recentCompleted = db.select().from(s.tasks).where(and(eq(s.tasks.status, "COMPLETED"), ne(s.tasks.type, "CHAT"))).orderBy(desc(s.tasks.finishedAt)).limit(8).all();
   const reportIds = Object.fromEntries(
     db
       .select({ taskId: s.reports.taskId, id: s.reports.id })

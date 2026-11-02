@@ -75,6 +75,7 @@ export const tasks = sqliteTable(
     projectId: text("project_id").references(() => projects.id),
     parentTaskId: text("parent_task_id"), // follow-ups (수정 요청 등)
     meetingId: text("meeting_id"),
+    conversationId: text("conversation_id"), // CHAT tasks: the conversation the reply belongs to
     source: text("source").notNull().default("manual"), // manual | proposal | schedule | meeting
     /** "api": the worker calls Claude. "manual": the CEO pastes the prompt into claude.ai and pastes the answer back (no API cost). */
     executionMode: text("execution_mode").notNull().default("api"),
