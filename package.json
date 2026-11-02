@@ -18,7 +18,8 @@
     "worker": "node --env-file-if-exists=.env.local --env-file-if-exists=.env --import tsx worker/index.ts",
     "e2e:phase2": "node e2e/phase2.mjs",
     "e2e:meeting": "node e2e/meeting.mjs",
-    "lite:build": "node lite/build.mjs"
+    "lite:build": "node lite/build.mjs",
+    "db:restore": "node scripts/restore.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.135.0",

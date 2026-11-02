@@ -69,9 +69,27 @@ export function TopBar({ data, health, live }: { data: OfficeSnapshot | null; he
         </span>
       </div>
 
-      <button type="button" onClick={() => useOffice.getState().setMeetingDialog(true)} className="pixel rounded-sm bg-hi px-3 py-1 text-[13px] font-bold text-void hover:brightness-110">
-        회의 소집
-      </button>
+      <div className="flex flex-wrap items-center gap-1">
+        <button type="button" onClick={() => useOffice.getState().setMeetingDialog(true)} className="pixel rounded-sm bg-hi px-3 py-1 text-[13px] font-bold text-void hover:brightness-110">
+          회의 소집
+        </button>
+        {(
+          [
+            ["projects", "프로젝트"],
+            ["finance", "재무"],
+            ["settings", "설정"],
+          ] as const
+        ).map(([k, l]) => (
+          <button key={k} type="button" onClick={() => useOffice.getState().setPanel(k)} className="pixel rounded-sm border-2 border-line bg-panel-2 px-2 py-0.5 text-[12px] hover:border-hi">
+            {l}
+          </button>
+        ))}
+        {data?.autonomy && (
+          <span className="pixel rounded-sm border border-line px-1.5 py-0.5 text-[11px] text-muted" title="운영 모드 (설정에서 변경)">
+            {{ manual: "수동", semi: "반자동", auto: "자동" }[data.autonomy.mode]} 모드
+          </span>
+        )}
+      </div>
       <div className="flex items-center gap-1" role="group" aria-label="게임 속도">
         <span className="pixel mr-1 hidden text-[11px] text-muted sm:inline">연출 속도</span>
         {SPEEDS.map((s) => (

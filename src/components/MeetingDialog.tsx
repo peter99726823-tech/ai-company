@@ -27,6 +27,11 @@ export function MeetingDialog({ data, health, reload }: { data: OfficeSnapshot |
     if (open) {
       setErr(null);
       setMode(apiReady ? "api" : "manual");
+      const draft = useOffice.getState().meetingTopicDraft;
+      if (draft) {
+        setTopic(draft);
+        useOffice.setState({ meetingTopicDraft: "" });
+      }
     }
   }, [open, apiReady]);
   if (!open) return null;

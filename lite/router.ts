@@ -8,8 +8,13 @@ import { createTask, getTaskDetail, requestCancel, retryTask, getReport, TaskInp
 import { createMeeting, getMeeting, recentMeetings, decideMeeting, getManualPrompt, submitManualAnswer } from "../src/server/meetings/service";
 import { getChat, sendChat } from "../src/server/chat/service";
 import { actOnReport, type ReportAction } from "../src/server/reports/service";
+import { getAutonomy, setAutonomy, listRoutines, createRoutine, updateRoutine, deleteRoutine, runRoutineNow, approveProposal, rejectProposal } from "../src/server/autonomy/service";
+import { listTransactions, addTransaction, deleteTransaction } from "../src/server/finance/service";
+import { createProject, updateProject, projectDetail } from "../src/server/projects/service";
+import { toBackupJson, fromBackupJson } from "../src/server/backup";
+import { exportDb, replaceDb } from "./client";
 
-type Handler = (m: RegExpMatchArray, body: Record<string, unknown>, query: URLSearchParams) => unknown;
+type Handler = (m: RegExpMatchArray, body: Record<string, unknown>, query: URLSearchParams) => unknown | Promise<unknown>;
 const listeners = new Set<() => void>();
 export const onChange = (fn: () => void) => (listeners.add(fn), () => listeners.delete(fn));
 
@@ -17,7 +22,7 @@ export const LITE_HEALTH = {
   lite: true,
   db: { ok: true, error: null },
   ai: { keyConfigured: false, model: "claude.ai (붙여넣기)", verified: false, lastError: null, engineConnected: false, message: "링크 버전: 업무와 회의를 claude.ai 붙여넣기 방식으로 처리합니다. API 비용 없음." },
-  worker: { running: false, message: "링크 버전에는 자동 실행기가 없습니다." },
+  worker: { running: false, message: "링크 버전에는 자동 실행기가 없습니다. 반복 업무는 이 페이지가 열려 있을 때 확인합니다." },
 };
 
 const GET: [RegExp, Handler][] = [
@@ -29,9 +34,26 @@ const GET: [RegExp, Handler][] = [
   [/^\/api\/tasks\/([\w-]+)\/prompt$/, (m) => ({ prompt: getManualPrompt(getDb() as never, m[1]) })],
   [/^\/api\/reports\/([\w-]+)$/, (m) => getReport(getDb() as never, m[1]) ?? notFound("보고서를 찾을 수 없습니다.")],
   [/^\/api\/chat\/([\w-]+)$/, (m, _b, q) => getChat(getDb() as never, m[1], q.get("projectId") || null)],
+  [/^\/api\/settings\/autonomy$/, () => getAutonomy(getDb() as never)],
+  [/^\/api\/routines$/, () => ({ routines: listRoutines(getDb() as never) })],
+  [/^\/api\/finance$/, (_m, _b, q) => listTransactions(getDb() as never, q.get("month"))],
+  [/^\/api\/projects\/([\w-]+)$/, (m) => projectDetail(getDb() as never, m[1]) ?? notFound("프로젝트를 찾을 수 없습니다.")],
+  [/^\/api\/backup$/, () => toBackupJson(exportDb())],
 ];
 
 const POST: [RegExp, Handler][] = [
+  [/^\/api\/settings\/autonomy$/, (_m, b) => setAutonomy(getDb() as never, b)],
+  [/^\/api\/routines$/, (_m, b) => createRoutine(getDb() as never, { ...(b as never), executionMode: "manual" })],
+  [/^\/api\/routines\/([\w-]+)\/run$/, (m) => runRoutineNow(getDb() as never, m[1], false)],
+  [/^\/api\/routines\/([\w-]+)\/update$/, (m, b) => updateRoutine(getDb() as never, m[1], { enabled: b.enabled as boolean | undefined })],
+  [/^\/api\/routines\/([\w-]+)\/delete$/, (m) => deleteRoutine(getDb() as never, m[1])],
+  [/^\/api\/tasks\/([\w-]+)\/approve$/, (m) => approveProposal(getDb() as never, m[1], "manual")],
+  [/^\/api\/tasks\/([\w-]+)\/reject$/, (m) => rejectProposal(getDb() as never, m[1])],
+  [/^\/api\/finance$/, (_m, b) => addTransaction(getDb() as never, b as never)],
+  [/^\/api\/finance\/([\w-]+)\/delete$/, (m) => deleteTransaction(getDb() as never, m[1])],
+  [/^\/api\/projects$/, (_m, b) => createProject(getDb() as never, b as never)],
+  [/^\/api\/projects\/([\w-]+)$/, (m, b) => updateProject(getDb() as never, m[1], b as never)],
+  [/^\/api\/backup\/restore$/, async (_m, b) => (await replaceDb(fromBackupJson(b)), { ok: true })],
   [/^\/api\/chat\/([\w-]+)$/, (m, b) => sendChat(getDb() as never, { employeeId: m[1], projectId: (b.projectId as string) ?? null, text: String(b.text ?? ""), executionMode: "manual" })],
   [
     /^\/api\/reports\/([\w-]+)\/action$/,
@@ -93,6 +115,11 @@ function conflictIf(r: { ok: boolean; message: string }) {
 }
 const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 
+/** Tell the app something changed outside a request (e.g. the scheduler created work). */
+export function notifyChange() {
+  listeners.forEach((fn) => fn());
+}
+
 export function installRouter() {
   const original = window.fetch.bind(window);
   window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -107,12 +134,12 @@ export function installRouter() {
       if (!m) continue;
       try {
         const body = init?.body ? JSON.parse(String(init.body)) : {};
-        const out = h(m, body, query);
+        const out = await h(m, body, query);
         if (method === "POST") listeners.forEach((fn) => fn());
-        return json(method === "POST" && /^\/api\/(tasks|meetings|chat\/[\w-]+)$/.test(path) ? 201 : 200, out);
+        return json(method === "POST" && /^\/api\/(tasks|meetings|routines|finance|projects|chat\/[\w-]+)$/.test(path) ? 201 : 200, out);
       } catch (e) {
         if (e instanceof HttpError) return json(e.status, e.body ?? { error: e.message });
-        if (e instanceof TaskInputError) return json(400, { error: e.message });
+        if (e instanceof TaskInputError || (e instanceof Error && /백업 파일/.test(e.message))) return json(400, { error: e.message });
         return json(500, { error: (e as Error).message });
       }
     }

@@ -58,7 +58,7 @@ test("createTask stores the task as QUEUED with CREATED + ASSIGNED events", () =
 test("createTask rejects bad input and unsupported types", () => {
   assert.throws(() => svc.createTask(db, { employeeId: "validator", instruction: "  " }), svc.TaskInputError);
   assert.throws(() => svc.createTask(db, { employeeId: "nobody", instruction: "x" }), svc.TaskInputError);
-  assert.throws(() => svc.createTask(db, { employeeId: "contract", instruction: "x", type: "CONTRACT_FILE" }), /파일 업로드/);
+  assert.throws(() => svc.createTask(db, { employeeId: "contract", instruction: "x", type: "MULTI_DEPT" }), /회의 소집/);
 });
 
 test("only one worker can claim a task (no duplicate execution)", () => {

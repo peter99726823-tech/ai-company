@@ -11,8 +11,9 @@ import m0 from "../drizzle/0000_init.sql";
 import m1 from "../drizzle/0001_task_cancel.sql";
 import m2 from "../drizzle/0002_meetings_manual.sql";
 import m3 from "../drizzle/0003_chat.sql";
+import m4 from "../drizzle/0004_routines.sql";
 
-const MIGRATIONS = [m0, m1, m2, m3];
+const MIGRATIONS = [m0, m1, m2, m3, m4];
 
 export type DB = SQLJsDatabase<typeof schema>;
 let raw: Database | null = null;
@@ -40,4 +41,12 @@ export function getDb(): DB {
 
 export function exportDb(): Uint8Array {
   return raw!.export();
+}
+
+/** Replace the whole database with a restored backup (validated by the caller). */
+export async function replaceDb(bytes: Uint8Array): Promise<DB> {
+  raw?.close();
+  raw = null;
+  db = null;
+  return initDb(bytes);
 }

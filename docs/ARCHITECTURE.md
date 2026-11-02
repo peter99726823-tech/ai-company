@@ -42,8 +42,12 @@
 | Cost Tracker | `src/server/ai/pricing.ts`, `api_usage` | 실제 토큰 사용량 × 가격표 = 추정 비용, 일일 한도 | ✅ |
 | Meeting | `src/server/meetings/` (`format.ts`, `service.ts`), `MeetingDialog`, `MeetingModal` | 회의 지시문, 응답 검증·분해, 부서별 발언 저장, 결정, 후속 업무 | ✅ |
 | Manual mode | `tasks.execution_mode = manual`, `/api/tasks/[id]/prompt`, `/api/tasks/[id]/submit`, `ManualRun` | claude.ai 붙여넣기로 API 비용 없이 처리. 실행기는 이 업무를 가져가지 않음 | ✅ |
-| Approval Manager | `approvals` 테이블 | 회의 결정 기록 ✅ · 보고서 승인·수정 요청 | 일부 |
-| Scheduler | `worker/` | 반복 업무, 자동 모드 한도 | PHASE 4 |
+| Approval Manager | `src/server/reports/service.ts`, `approvals` | 회의 결정, 보고서 결재(승인·수정 요청·추가 분석·전달·프로젝트 반영·종료), 제안 승인·거절 | ✅ |
+| Chat | `src/server/chat/service.ts`, `ChatModal` | 직원·프로젝트별 1:1 대화 (CHAT 업무) | ✅ |
+| Scheduler / Autonomy | `src/server/autonomy/service.ts`, `routines` | 운영 모드, 반복 업무, 제안, 하루 자동 한도. PC는 워커가, 링크 버전은 페이지가 30초마다 실행 | ✅ |
+| Finance | `src/server/finance/service.ts`, `FinanceModal` | 거래내역(실제/시뮬레이션 분리), 월 합계, 분석 지시문 첨부 | ✅ |
+| Projects | `src/server/projects/service.ts`, `ProjectsModal` | 프로젝트 편집·생성·연결 업무 조회 | ✅ |
+| Backup | `src/server/backup.ts`, `/api/backup`, `scripts/restore.mjs` | JSON(내부 SQLite) 백업, 복원 | ✅ |
 
 ## 디렉터리
 

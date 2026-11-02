@@ -12,7 +12,7 @@ import { seedIfEmpty, ensurePrompts } from "./seed-data";
 
 export type DB = BetterSQLite3Database<typeof schema>;
 
-const g = globalThis as unknown as { __companyDb?: DB };
+const g = globalThis as unknown as { __companyDb?: DB; __companySqlite?: Database.Database };
 
 export function getDb(): DB {
   if (g.__companyDb) return g.__companyDb;
@@ -29,5 +29,12 @@ export function getDb(): DB {
   seedIfEmpty(db);
   ensurePrompts(db);
   g.__companyDb = db;
+  g.__companySqlite = sqlite;
   return db;
+}
+
+/** The raw SQLite handle (used for consistent backups via serialize()). */
+export function getSqlite(): Database.Database {
+  getDb();
+  return g.__companySqlite!;
 }

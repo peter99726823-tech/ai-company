@@ -87,9 +87,9 @@ export function EmployeePanel({ data, health, reload }: { data: OfficeSnapshot |
     if (execMode === "manual") openManual(j.task.id);
   }
 
-  async function act(url: string) {
-    const { j } = await post(url);
-    setNotice({ tone: j.ok ? "ok" : "bad", text: j.message ?? "처리하지 못했습니다." });
+  async function act(url: string, body?: unknown) {
+    const { ok, j } = await post(url, body);
+    setNotice({ tone: ok ? "ok" : "bad", text: j.message ?? j.error ?? (ok ? "처리했습니다." : "처리하지 못했습니다.") });
     reload();
   }
 
@@ -145,6 +145,16 @@ export function EmployeePanel({ data, health, reload }: { data: OfficeSnapshot |
                   <i className="block h-full bg-ok transition-[width] duration-500" style={{ width: `${active.progress}%` }} />
                 </div>
                 <div className="text-[12px] text-muted">{active.statusMessage}</div>
+                {active.status === "WAITING_APPROVAL" && (
+                  <span className="mr-2 inline-flex gap-1">
+                    <button type="button" onClick={() => act(`/api/tasks/${active.id}/approve`, { executionMode: apiReady ? "api" : "manual" })} className="pixel rounded-sm bg-hi px-2 py-0.5 text-[11px] font-bold text-void">
+                      제안 승인
+                    </button>
+                    <button type="button" onClick={() => act(`/api/tasks/${active.id}/reject`)} className="pixel rounded-sm border border-line px-2 py-0.5 text-[11px]">
+                      거절
+                    </button>
+                  </span>
+                )}
                 {active.executionMode === "manual" && active.status === "QUEUED" ? (
                   <button type="button" onClick={() => (active.meetingId ? useOffice.getState().openMeeting(active.meetingId) : openManual(active.id))} className="pixel mr-2 rounded-sm bg-hi px-2 py-0.5 text-[11px] font-bold text-void">
                     {active.meetingId ? "회의실 열기" : "붙여넣기로 처리"}
@@ -282,6 +292,30 @@ export function EmployeePanel({ data, health, reload }: { data: OfficeSnapshot |
               ))}
             </select>
           </label>
+          {typeDef?.meeting && (
+            <button type="button" onClick={() => useOffice.getState().startMeetingWith(instruction)} className="pixel w-full rounded-sm border-2 border-hi py-1.5 text-[12px] text-hi">
+              회의 소집으로 진행하기
+            </button>
+          )}
+          {typeDef?.upload && (
+            <label className="block rounded-sm border-2 border-dashed border-line p-2 text-[12px]">
+              <span className="pixel text-muted">계약서 파일 (.txt, .md) — 내용이 지시문에 붙습니다</span>
+              <input
+                type="file"
+                accept=".txt,.md,text/plain,text/markdown"
+                aria-label="계약서 파일"
+                className="mt-1 block w-full text-[12px]"
+                onChange={async (e) => {
+                  const f = e.target.files?.[0];
+                  if (!f) return;
+                  if (f.size > 200_000) return setNotice({ tone: "bad", text: "파일이 너무 큽니다 (최대 200KB)." });
+                  const text = await f.text();
+                  setInstruction((cur) => `${cur.trim() ? `${cur.trim()}\n\n` : "이 계약서를 검토해 주세요.\n\n"}--- ${f.name} ---\n${text}`);
+                }}
+              />
+              <span className="mt-1 block text-[11px] text-muted">PDF·한글(hwp) 파일은 아직 직접 읽지 못합니다. 본문을 복사해 붙여넣어 주세요.</span>
+            </label>
+          )}
           <label className="block">
             <span className="pixel text-[12px] text-muted">{profile.name}에게 지시할 업무</span>
             <textarea

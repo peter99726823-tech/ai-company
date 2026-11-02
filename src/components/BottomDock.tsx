@@ -42,7 +42,9 @@ export function BottomDock({ data, error }: { data: OfficeSnapshot | null; error
                 <li key={e.id} className="grid grid-cols-[4.5rem_4rem_8rem_1fr] gap-2 border-b border-line/60 py-0.5">
                   <span className="text-muted">{time(e.createdAt)}</span>
                   <span>{e.employeeId ? EMPLOYEE_BY_ID[e.employeeId]?.name : "–"}</span>
-                  <span className={e.type === "TASK_FAILED" ? "text-bad" : e.type === "TASK_COMPLETED" ? "text-ok" : "text-info"}>{e.type}</span>
+                  <span className={`truncate ${e.type === "TASK_FAILED" ? "text-bad" : e.type === "TASK_COMPLETED" ? "text-ok" : "text-info"}`} title={e.type}>
+                    {e.type}
+                  </span>
                   <span className="truncate">{e.message}</span>
                 </li>
               ))}
@@ -95,7 +97,7 @@ export function BottomDock({ data, error }: { data: OfficeSnapshot | null; error
         {data?.attention.length ? (
           <ul className="space-y-1 text-[12px]">
             {data.attention.map((t) => (
-              <li key={t.id}>
+              <li key={t.id} data-testid={t.status === "WAITING_APPROVAL" ? "proposal" : undefined}>
                 <button
                   type="button"
                   onClick={() =>
@@ -114,6 +116,7 @@ export function BottomDock({ data, error }: { data: OfficeSnapshot | null; error
                   <span className="text-muted">{EMPLOYEE_BY_ID[t.employeeId]?.name}</span> {t.title}
                 </button>
                 {t.error && <div className="truncate pl-2 text-[11px] text-muted">{t.error}</div>}
+                {t.status === "WAITING_APPROVAL" && <ProposalButtons id={t.id} />}
               </li>
             ))}
           </ul>
@@ -144,4 +147,20 @@ function Tab({ on, onClick, children }: { on: boolean; onClick: () => void; chil
 
 function Empty({ children }: { children: React.ReactNode }) {
   return <p className="py-1 text-[12px] leading-relaxed text-muted">{children}</p>;
+}
+
+function ProposalButtons({ id }: { id: string }) {
+  const act = async (what: "approve" | "reject") => {
+    await fetch(`/api/tasks/${id}/${what}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ executionMode: "manual" }) });
+  };
+  return (
+    <span className="ml-2 inline-flex gap-1">
+      <button type="button" onClick={() => act("approve")} className="pixel rounded-sm bg-hi px-1.5 text-[11px] font-bold text-void">
+        승인
+      </button>
+      <button type="button" onClick={() => act("reject")} className="pixel rounded-sm border border-line px-1.5 text-[11px]">
+        거절
+      </button>
+    </span>
+  );
 }

@@ -35,6 +35,8 @@ interface OfficeState {
   meetingDialog: boolean;
   manualTaskId: string | null;
   chatEmployeeId: string | null;
+  panel: null | "projects" | "finance" | "settings";
+  meetingTopicDraft: string;
   toasts: Toast[];
   setReady: () => void;
   setSelected: (id: string | null) => void;
@@ -48,6 +50,8 @@ interface OfficeState {
   setMeetingDialog: (v: boolean) => void;
   openManual: (taskId: string | null) => void;
   openChat: (employeeId: string | null) => void;
+  setPanel: (p: OfficeState["panel"]) => void;
+  startMeetingWith: (topic: string) => void;
   toast: (t: Omit<Toast, "id">) => void;
   dismissToast: (id: number) => void;
 }
@@ -67,6 +71,8 @@ export const useOffice = create<OfficeState>((set) => ({
   meetingDialog: false,
   manualTaskId: null,
   chatEmployeeId: null,
+  panel: null,
+  meetingTopicDraft: "",
   toasts: [],
   setReady: () => set({ ready: true }),
   setSelected: (id) => set({ selectedId: id }),
@@ -99,6 +105,8 @@ export const useOffice = create<OfficeState>((set) => ({
   setMeetingDialog: (meetingDialog) => set({ meetingDialog }),
   openManual: (manualTaskId) => set({ manualTaskId }),
   openChat: (chatEmployeeId) => set({ chatEmployeeId }),
+  setPanel: (panel) => set({ panel }),
+  startMeetingWith: (meetingTopicDraft) => set({ meetingTopicDraft, meetingDialog: true }),
   toast: (t) => set((s) => ({ toasts: [...s.toasts, { ...t, id: ++toastSeq }].slice(-4) })),
   dismissToast: (id) => set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),
 }));

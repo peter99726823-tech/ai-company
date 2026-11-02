@@ -244,3 +244,26 @@ export const reportRelations = relations(reports, ({ one }) => ({
 export type TaskRow = typeof tasks.$inferSelect;
 export type TaskEventRow = typeof taskEvents.$inferSelect;
 export type ReportRow = typeof reports.$inferSelect;
+
+/**
+ * Recurring work the CEO approved in advance (PHASE 4). The scheduler turns a due routine into a
+ * task (자동 모드) or a proposal waiting for approval (반자동 모드); 수동 모드 creates nothing.
+ */
+export const routines = sqliteTable("routines", {
+  id: text("id").primaryKey(),
+  employeeId: text("employee_id").notNull().references(() => employees.id),
+  title: text("title").notNull(),
+  instruction: text("instruction").notNull(),
+  type: text("type").notNull().default("GENERAL"),
+  projectId: text("project_id").references(() => projects.id),
+  frequency: text("frequency").notNull(), // daily | weekly | monthly
+  dayOfWeek: integer("day_of_week"), // 0-6 (weekly)
+  dayOfMonth: integer("day_of_month"), // 1-28 (monthly)
+  hour: integer("hour").notNull().default(9),
+  executionMode: text("execution_mode").notNull().default("manual"),
+  enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
+  lastRunAt: integer("last_run_at"),
+  nextRunAt: integer("next_run_at").notNull(),
+  createdAt: integer("created_at").notNull().$defaultFn(now),
+});
+export type RoutineRow = typeof routines.$inferSelect;

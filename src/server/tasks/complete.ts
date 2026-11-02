@@ -12,6 +12,8 @@ import { transition, recordEvent, TaskInputError } from "./service";
 import type { TaskStatus } from "@/domain/types";
 import { TASK_TYPE_BY_ID } from "@/domain/taskTypes";
 import { meetingSystemPrompt, meetingUserPrompt, parseMeeting, MeetingFormatError } from "../meetings/format";
+import { proposeFromReport } from "../autonomy/service";
+import { transactionsForPrompt } from "../finance/service";
 
 type Task = typeof s.tasks.$inferSelect;
 
@@ -71,6 +73,9 @@ export function buildPrompts(db: DB, task: Task, webSearch: boolean): { system: 
     );
   }
   parts.push(`# 업무 유형\n${def.label}: ${def.guide}`);
+  if (task.type === "TRANSACTIONS") {
+    parts.push(`# 앱에 입력된 거래내역 (대표가 입력한 실제 데이터와 시뮬레이션 데이터, 구분 열 참고)\n${transactionsForPrompt(db, task.projectId)}`);
+  }
   parts.push(
     webSearch
       ? "# 도구\n웹 검색 도구를 쓸 수 있습니다. 최신 가격·경쟁사·시장 정보는 검색해서 확인하고, 참고한 자료에 실제 URL을 적으세요."
@@ -192,6 +197,8 @@ export function finalizeTask(
     if (!moved) throw new TaskInputError("업무 상태가 바뀌어 저장하지 않았습니다 (이미 끝났거나 취소됨).");
     if (meeting) recordEvent(tx as unknown as DB, { type: "MEETING_ENDED", meetingId: meeting.id, employeeId: task.employeeId, message: `회의 종료: ${meeting.topic.slice(0, 40)}` });
   });
+  // 반자동/자동 모드: the report's recommended next tasks become proposals for the CEO.
+  if (!meeting) proposeFromReport(db, task.id, parsed.nextTasks);
   return reportId;
 }
 

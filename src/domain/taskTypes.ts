@@ -9,6 +9,10 @@ export interface TaskTypeDef {
   needs?: string;
   /** Benefits from fresh web data. Runs without it, but the report must say so. */
   wantsWeb?: boolean;
+  /** The form offers a text-file upload whose contents are added to the instruction. */
+  upload?: boolean;
+  /** Not a single-employee task: the form sends the CEO to the meeting dialog instead. */
+  meeting?: boolean;
 }
 
 export const TASK_TYPES: TaskTypeDef[] = [
@@ -21,9 +25,9 @@ export const TASK_TYPES: TaskTypeDef[] = [
   { id: "SALES_MESSAGE", label: "영업 메시지 작성", guide: "고객 유형, 고객 문제에서 출발하는 DM·이메일 초안, 후속 메시지, 예상 거절 사유와 대응을 포함합니다.", supported: true },
   { id: "TRANSACTIONS", label: "거래내역 분석", guide: "대표가 지시문에 붙여넣은 거래내역만 사용합니다. 분류표, 고정비·변동비, 손익, 이상 지출을 포함합니다. 내역이 없으면 필요한 형식을 안내합니다.", supported: true },
   { id: "CONTRACT", label: "계약서 분석 (본문 붙여넣기)", guide: "대표가 지시문에 붙여넣은 계약서 본문만 검토합니다. 조항 인용, 위험도, 수정 문구, 변호사 확인 항목을 포함합니다.", supported: true },
-  { id: "CONTRACT_FILE", label: "계약서 파일 업로드 분석", guide: "", supported: false, needs: "파일 업로드 기능이 아직 없습니다. 지금은 '계약서 분석 (본문 붙여넣기)'를 사용하세요." },
+  { id: "CONTRACT_FILE", label: "계약서 파일 분석 (.txt .md)", guide: "대표가 올린 계약서 파일 내용(지시문에 포함)만 검토합니다. 조항 인용, 위험도, 수정 문구, 변호사 확인 항목을 포함합니다.", supported: true, upload: true },
   { id: "WORK_PLAN", label: "프로젝트 업무 계획", guide: "목표, 작업 분해, 순서, 예상 시간, 담당(AI/대표), 완료 기준, 위험을 표로 포함합니다.", supported: true },
-  { id: "MULTI_DEPT", label: "여러 부서 종합 보고서", guide: "", supported: false, needs: "여러 직원이 함께 일하는 회의 시스템이 필요합니다 (PHASE 3)." },
+  { id: "MULTI_DEPT", label: "여러 부서 종합 보고서 → 회의로 진행", guide: "", supported: false, needs: "여러 부서 종합 보고서는 상단의 '회의 소집'으로 진행합니다.", meeting: true },
 ];
 
 export const TASK_TYPE_BY_ID = Object.fromEntries(TASK_TYPES.map((t) => [t.id, t])) as Record<string, TaskTypeDef>;

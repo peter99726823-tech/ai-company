@@ -4,6 +4,7 @@ import { getDb } from "../db/client";
 import * as s from "../db/schema";
 import type { EmployeeLook } from "@/domain/types";
 import { recentMeetings } from "../meetings/service";
+import { getAutonomy, listRoutines } from "../autonomy/service";
 
 function startOfTodayLocal() {
   const d = new Date();
@@ -102,6 +103,8 @@ export function getOfficeSnapshot() {
     recentCompleted: recentCompleted.map((t) => ({ ...t, reportId: reportIds[t.id] ?? null })),
     maxEventId,
     meetings: recentMeetings(db, 6),
+    autonomy: getAutonomy(db),
+    routines: listRoutines(db),
     attention,
     serverTime: Date.now(),
   };

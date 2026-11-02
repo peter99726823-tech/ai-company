@@ -121,6 +121,87 @@ try {
   check("보고서 → 프로젝트 반영", proj.nextPlan === "홍보 문구 확정");
   await page.screenshot({ path: OUT + "lite-02-report-actions.png" });
 
+  await rm.getByRole("button", { name: "닫기" }).click();
+
+  // ── PHASE 4: settings, routines, proposals ──
+  await page.getByRole("button", { name: "설정", exact: true }).click();
+  const st = page.getByRole("dialog", { name: "설정" });
+  await st.getByRole("radio", { name: /반자동/ }).check();
+  await page.waitForFunction(() => document.querySelector("header")?.textContent?.includes("반자동 모드"), null, { timeout: 5000 });
+  check("운영 모드 → 반자동 (상단 바 표시)", true);
+  await st.getByLabel("반복 이름").fill("주간 지출 점검");
+  await st.getByLabel("반복 업무 내용").fill("이번 주 지출을 점검하고 줄일 항목을 제안해줘");
+  await st.getByLabel("반복 담당").selectOption("bookkeeper");
+  await st.getByRole("button", { name: "반복 업무 등록" }).click();
+  await st.locator("[data-testid=routines] li", { hasText: "주간 지출 점검" }).waitFor();
+  check("반복 업무 등록", true);
+  await st.locator("[data-testid=routines] li", { hasText: "주간 지출 점검" }).getByRole("button", { name: "지금 실행" }).click();
+  await st.getByText("업무를 만들었습니다").waitFor();
+  check("반복 업무 '지금 실행' → 업무 생성", true);
+  await st.getByRole("button", { name: "닫기" }).click();
+
+  // a report in semi mode produces proposals
+  await page.evaluate(async () => {
+    const r = await fetch("/api/tasks", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ employeeId: "validator", instruction: "시장 검증" }) });
+    const t = (await r.json()).task;
+    await fetch(`/api/tasks/${t.id}/submit`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text: "## 요약\n[테스트 문구] 검증 요약입니다. 충분히 긴 본문입니다.\n## 다음 추천 업무\n- 경쟁사 가격 조사\n- 사용자 인터뷰 5명" }) });
+  });
+  await page.locator("[data-testid=proposal]").first().waitFor({ timeout: 10000 });
+  check("반자동: 보고서의 다음 추천 업무 → 제안 2건", (await page.locator("[data-testid=proposal]").count()) === 2);
+  await page.locator("[data-testid=proposal]").first().getByRole("button", { name: "승인", exact: true }).click();
+  await page.waitForFunction(() => document.querySelectorAll("[data-testid=proposal]").length === 1, null, { timeout: 10000 });
+  check("제안 승인 → 업무로 전환", true);
+
+  // ── finance ──
+  await page.getByRole("button", { name: "재무", exact: true }).click();
+  const fm = page.getByRole("dialog", { name: "재무 · 거래내역" });
+  await fm.getByLabel("내용").fill("서버 비용");
+  await fm.getByLabel("금액").fill("30,000");
+  await fm.getByRole("button", { name: "거래 추가" }).click();
+  await fm.getByLabel("내용").fill("가상 구독 매출");
+  await fm.getByLabel("수입 지출").selectOption("income");
+  await fm.getByLabel("금액").fill("100000");
+  await fm.getByText("시뮬레이션 (실제 거래 아님)").click();
+  await fm.getByRole("button", { name: "거래 추가" }).click();
+  await fm.locator("tbody tr").nth(1).waitFor();
+  const sum = await fm.locator("[data-testid=finance-summary]").innerText();
+  check("거래 입력: 실제와 시뮬레이션 분리 합계", sum.includes("지출 30,000원") && sum.includes("시뮬레이션 (1건"));
+  await fm.getByRole("button", { name: "지호에게 분석 요청" }).click();
+  const mm = page.getByRole("dialog", { name: "붙여넣기로 업무 처리" });
+  await page.waitForFunction(() => (document.querySelector("[aria-label='붙여넣기로 업무 처리'] textarea[readonly]")?.value ?? "").includes("서버 비용"), null, { timeout: 10000 });
+  check("분석 요청 지시문에 거래내역 자동 첨부", true);
+  await mm.getByRole("button", { name: "닫기" }).click();
+
+  // ── projects ──
+  await page.getByRole("button", { name: "프로젝트", exact: true }).click();
+  const pm = page.getByRole("dialog", { name: "프로젝트 관리" });
+  await pm.locator("[data-testid=project-detail]").waitFor();
+  await pm.getByLabel("현재 단계").fill("개발 중");
+  await pm.getByLabel("예산").fill("200000");
+  await pm.getByRole("button", { name: "저장" }).click();
+  await pm.getByText("저장했습니다").waitFor();
+  const pj = await page.evaluate(() => fetch("/api/office").then((r) => r.json()).then((o) => o.projects[0]));
+  check("프로젝트 편집 저장", pj.stage === "개발 중" && pj.budgetMicros === 200000);
+  await pm.getByRole("button", { name: "닫기" }).click();
+
+  // ── backup & restore ──
+  await page.getByRole("button", { name: "설정", exact: true }).click();
+  const st2 = page.getByRole("dialog", { name: "설정" });
+  const [dl] = await Promise.all([page.waitForEvent("download"), st2.getByRole("button", { name: "백업 파일 저장" }).click()]);
+  const backupPath = OUT + "lite-backup.json";
+  await dl.saveAs(backupPath);
+  const bj = JSON.parse(fs.readFileSync(backupPath, "utf8"));
+  check("백업 파일 저장 (JSON, SQLite 포함)", bj.format === "ai-company-backup" && Buffer.from(bj.sqlite, "base64").subarray(0, 15).toString() === "SQLite format 3");
+  // change something, then restore and check it is gone
+  await page.evaluate(() => fetch("/api/finance", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ date: "2026-11-02", description: "복원 후 사라질 거래", amountKrw: -1 }) }));
+  await st2.getByLabel("백업 파일 선택").setInputFiles(backupPath);
+  await st2.getByRole("button", { name: /복원 실행/ }).click();
+  await st2.getByText("복원했습니다").waitFor();
+  const after = await page.evaluate(() => fetch("/api/finance").then((r) => r.json()));
+  check("백업에서 복원", !after.rows.some((r) => r.description === "복원 후 사라질 거래") && after.rows.some((r) => r.description === "서버 비용"));
+  await st2.getByRole("button", { name: "닫기" }).click();
+  await page.screenshot({ path: OUT + "lite-03-phase4.png" });
+
   check("콘솔 오류 없음", errors.length === 0, errors.slice(0, 2).join(" | "));
 } catch (e) {
   check("시나리오 실행", false, e.message.split("\n")[0]);

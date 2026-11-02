@@ -11,6 +11,9 @@ import { MeetingDialog } from "@/components/MeetingDialog";
 import { MeetingModal } from "@/components/MeetingModal";
 import { ManualTaskModal } from "@/components/ManualTaskModal";
 import { ChatModal } from "@/components/ChatModal";
+import { ProjectsModal } from "@/components/ProjectsModal";
+import { FinanceModal } from "@/components/FinanceModal";
+import { SettingsModal } from "@/components/SettingsModal";
 import { useOfficeData } from "@/hooks/useOfficeData";
 import { useTaskDriver } from "@/hooks/useTaskDriver";
 import { useOffice } from "@/store/officeStore";
@@ -56,6 +59,9 @@ export function App({ storeKind }: { storeKind: "artifact" | "local" }) {
       <MeetingModal health={health} reload={reload} />
       <ManualTaskModal reload={reload} />
       <ChatModal data={data} health={health} reload={reload} />
+      <ProjectsModal data={data} reload={reload} />
+      <FinanceModal data={data} health={health} reload={reload} />
+      <SettingsModal data={data} health={health} reload={reload} />
     </main>
   );
 }

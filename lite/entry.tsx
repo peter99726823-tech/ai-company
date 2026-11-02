@@ -1,7 +1,9 @@
 import { createRoot } from "react-dom/client";
 import { openStore } from "./storage";
 import { initDb, exportDb } from "./client";
-import { installRouter, onChange } from "./router";
+import { installRouter, onChange, notifyChange } from "./router";
+import { getDb } from "./client";
+import { runScheduler } from "../src/server/autonomy/service";
 import { saveState } from "./save";
 import { App } from "./App";
 
@@ -36,6 +38,17 @@ const root = createRoot(document.getElementById("root")!);
     });
     document.addEventListener("visibilitychange", () => document.visibilityState === "hidden" && timer && flush());
     if (!saved) flush(); // first visit: store the seeded company right away
+
+    // Recurring work: the link version has no server, so routines are checked while this page is open.
+    const schedule = () => {
+      try {
+        if (runScheduler(getDb() as never, Date.now(), false).length) notifyChange();
+      } catch (e) {
+        console.warn("scheduler", e);
+      }
+    };
+    schedule();
+    setInterval(schedule, 30000);
 
     root.render(<App storeKind={store.kind} />);
   } catch (e) {
