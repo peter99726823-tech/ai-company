@@ -59,3 +59,11 @@ test("ideas: capture, validate with 서진, open a meeting, status changes", () 
   assert.throws(() => ideas.updateIdea(db, i.id, { status: "weird" }), /알 수 없는/);
   assert.throws(() => ideas.createIdea(db, { title: "  " }), /한 줄/);
 });
+
+test("folder attachments may be longer than single files and are labelled as folders in the prompt", () => {
+  const big = "x".repeat(70000);
+  const [f] = cleanAttachments([{ name: "game/", kind: "folder", text: big, chars: big.length, truncated: false }]);
+  assert.equal(f.text.length, 70000);
+  const t = svc.createTask(db, { employeeId: "cto", instruction: "코드 리뷰", executionMode: "manual", attachments: [{ name: "game/", kind: "folder", text: "폴더: game\n[폴더 구조]\ngame/\n  index.html", chars: 30, truncated: false }] });
+  assert.match(ms.getManualPrompt(db, t.id), /## 폴더: game\//);
+});

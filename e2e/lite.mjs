@@ -315,6 +315,50 @@ try {
   check("창 밖(사무실 화면)에 떨어뜨려도 브라우저가 파일을 열지 않음", (await page.evaluate(() => window.__dropPrevented)) && page.url() === before);
   await page.locator("aside").getByRole("button", { name: "닫기" }).click();
 
+  // ── HTML file + folder ──
+  const dir = OUT + "test-folder";
+  fs.rmSync(dir, { recursive: true, force: true });
+  fs.mkdirSync(dir + "/js", { recursive: true });
+  fs.mkdirSync(dir + "/node_modules/lib", { recursive: true });
+  fs.writeFileSync(dir + "/index.html", "<!doctype html><title>퍼즐</title><canvas id='HTML-SRC-42'></canvas><script src='js/game.js'></script>");
+  fs.writeFileSync(dir + "/js/game.js", "const LEVELS = 10; // GAME-JS-77");
+  fs.writeFileSync(dir + "/node_modules/lib/big.js", "SHOULD-NOT-APPEAR");
+  fs.writeFileSync(dir + "/notes.md", "# 메모 NOTES-5");
+  fs.writeFileSync(dir + "/logo.png", Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+
+  await clickEmployee("ops");
+  await page.locator("aside").getByRole("button", { name: "업무 지시", exact: true }).first().click();
+  await dropFiles("[data-testid=order-form]", [{ name: "page.html", text: "<html><body><h1 id='DROP-HTML-8'>랜딩</h1></body></html>", type: "text/html" }]);
+  await page.locator("[data-testid=order-form] [data-testid=attachments]").getByText("page.html").waitFor({ timeout: 10000 });
+  check("HTML 파일 끌어놓기 → 첨부", true);
+  await page.locator("[data-testid=order-form]").getByLabel("폴더 첨부").setInputFiles(dir);
+  await page.locator("[data-testid=order-form] [data-testid=attachments]").getByText("test-folder/").waitFor({ timeout: 15000 });
+  check("📁 폴더 선택 → 폴더가 첨부 1개로 묶임", true);
+  await page.fill("#order-text", "이 게임 코드 리뷰해줘");
+  await page.locator("aside").getByRole("button", { name: "업무 지시하기" }).click();
+  await page.waitForFunction(() => (document.querySelector("[aria-label='붙여넣기로 업무 처리'] textarea[readonly]")?.value ?? "").includes("GAME-JS-77"), null, { timeout: 10000 });
+  const fp = await page.locator("[aria-label='붙여넣기로 업무 처리'] textarea[readonly]").inputValue();
+  check("HTML은 소스 그대로 지시문에 포함", fp.includes("id='DROP-HTML-8'") && fp.includes("<canvas id='HTML-SRC-42'>"));
+  check("폴더: 구조 목록 + 하위 폴더 코드 + 메모 포함", fp.includes("[폴더 구조]") && fp.includes("js/game.js") && fp.includes("GAME-JS-77") && fp.includes("NOTES-5"));
+  check("폴더: node_modules 제외, 이미지는 목록에만", !fp.includes("SHOULD-NOT-APPEAR") && fp.includes("logo.png  (읽지 않음)") && fp.includes("제외"));
+  await page.getByRole("dialog", { name: "붙여넣기로 업무 처리" }).getByRole("button", { name: "닫기" }).click();
+  await page.locator("aside").getByRole("button", { name: "닫기" }).click();
+
+  // real folder drag through Chromium's native drag events (directory entries can't be faked in-page)
+  await page.getByRole("button", { name: "회의 소집" }).click();
+  const mform = page.locator("[aria-label='회의 소집'] form");
+  const mb = await mform.boundingBox();
+  const cdp = await page.context().newCDPSession(page);
+  for (const type of ["dragEnter", "dragOver", "drop"])
+    await cdp.send("Input.dispatchDragEvent", { type, x: mb.x + mb.width / 2, y: mb.y + mb.height / 2, data: { items: [], files: [dir], dragOperationsMask: 1 } });
+  await mform.locator("[data-testid=attachments]").getByText("test-folder/").waitFor({ timeout: 15000 });
+  await page.fill("#meeting-topic", "폴더 끌어놓기 회의");
+  await page.getByRole("dialog", { name: "회의 소집" }).getByRole("button", { name: "회의 시작" }).click();
+  await page.waitForFunction(() => (document.querySelector("[aria-label='회의실'] textarea[readonly]")?.value ?? "").includes("[폴더 구조]"), null, { timeout: 10000 });
+  const fdp = await page.locator("[aria-label='회의실'] textarea[readonly]").inputValue();
+  check("실제 폴더 끌어놓기 → 하위 폴더까지 읽고 node_modules 제외", fdp.includes("GAME-JS-77") && !fdp.includes("SHOULD-NOT-APPEAR") && /빌드 폴더의 파일 \d+개 제외/.test(fdp));
+  await page.getByRole("dialog", { name: "회의실" }).getByRole("button", { name: "닫기" }).click();
+
   check("콘솔 오류 없음", errors.length === 0, errors.slice(0, 2).join(" | "));
 } catch (e) {
   check("시나리오 실행", false, e.message.split("\n")[0]);
