@@ -1,34 +1,110 @@
 "use client";
 
-import { useId, useState } from "react";
+import { useEffect, useId, useRef, useState, type RefObject } from "react";
 import { ATTACH_LIMITS, type Attachment } from "@/domain/attachments";
 import { readAttachment, ACCEPT } from "@/lib/readAttachment";
 
-/** 파일 첨부: text/PDF files → extracted text chips. Controlled by the parent. */
-export function AttachmentPicker({ value, onChange, compact }: { value: Attachment[]; onChange: (a: Attachment[]) => void; compact?: boolean }) {
+const hasFiles = (e: DragEvent) => !!e.dataTransfer && Array.from(e.dataTransfer.types).includes("Files");
+
+// A file dropped anywhere outside a drop area must not make the browser open it (and leave the app).
+let guardInstalled = false;
+function installPageGuard() {
+  if (guardInstalled || typeof window === "undefined") return;
+  guardInstalled = true;
+  const stop = (e: DragEvent) => {
+    if (hasFiles(e)) e.preventDefault();
+  };
+  window.addEventListener("dragover", stop);
+  window.addEventListener("drop", stop);
+}
+
+/**
+ * 파일 첨부: text/PDF files → extracted text chips. Controlled by the parent.
+ * Files can be picked with the 📎 button or dragged onto `dropRef` (the whole form/window).
+ */
+export function AttachmentPicker({
+  value,
+  onChange,
+  compact,
+  dropRef,
+}: {
+  value: Attachment[];
+  onChange: (a: Attachment[]) => void;
+  compact?: boolean;
+  dropRef?: RefObject<HTMLElement | null>;
+}) {
   const id = useId();
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [over, setOver] = useState<DOMRect | null>(null);
+  const latest = useRef(value);
+  latest.current = value;
 
-  async function add(files: FileList | null) {
-    if (!files?.length) return;
+  async function add(files: FileList | File[] | null) {
+    const list = files ? Array.from(files) : [];
+    if (!list.length) return;
     setErr(null);
     setBusy(true);
-    const next = [...value];
-    for (const f of Array.from(files)) {
+    const next = [...latest.current];
+    const errors: string[] = [];
+    for (const f of list) {
       if (next.length >= ATTACH_LIMITS.files) {
-        setErr(`첨부는 최대 ${ATTACH_LIMITS.files}개까지입니다.`);
+        errors.push(`첨부는 최대 ${ATTACH_LIMITS.files}개까지입니다.`);
         break;
       }
       try {
         next.push(await readAttachment(f));
       } catch (e) {
-        setErr((e as Error).message);
+        errors.push((e as Error).message);
       }
     }
     setBusy(false);
+    setErr(errors.length ? errors.join(" ") : null);
     onChange(next);
   }
+  const addRef = useRef(add);
+  addRef.current = add;
+
+  useEffect(() => {
+    installPageGuard();
+    const el = dropRef?.current;
+    if (!el) return;
+    let depth = 0; // dragenter/leave fire for every child; count to know when we really left
+    const enter = (e: DragEvent) => {
+      if (!hasFiles(e)) return;
+      e.preventDefault();
+      depth++;
+      setOver(el.getBoundingClientRect());
+    };
+    const overFn = (e: DragEvent) => {
+      if (!hasFiles(e)) return;
+      e.preventDefault();
+      if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
+    };
+    const leave = (e: DragEvent) => {
+      if (!hasFiles(e)) return;
+      depth = Math.max(0, depth - 1);
+      if (!depth) setOver(null);
+    };
+    const drop = (e: DragEvent) => {
+      if (!hasFiles(e)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      depth = 0;
+      setOver(null);
+      void addRef.current(e.dataTransfer?.files ?? null);
+    };
+    el.addEventListener("dragenter", enter);
+    el.addEventListener("dragover", overFn);
+    el.addEventListener("dragleave", leave);
+    el.addEventListener("drop", drop);
+    return () => {
+      el.removeEventListener("dragenter", enter);
+      el.removeEventListener("dragover", overFn);
+      el.removeEventListener("dragleave", leave);
+      el.removeEventListener("drop", drop);
+    };
+  }, [dropRef]);
 
   return (
     <div className="space-y-1" data-testid="attachments">
@@ -45,9 +121,18 @@ export function AttachmentPicker({ value, onChange, compact }: { value: Attachme
             </button>
           </span>
         ))}
-        {!compact && !value.length && <span className="text-[11px] text-muted">.txt .md .csv .pdf · 내용이 지시문에 붙습니다</span>}
+        {!compact && !value.length && <span className="text-[11px] text-muted">{dropRef ? "또는 파일을 이 창에 끌어다 놓으세요 · " : ""}.txt .md .csv .pdf</span>}
       </div>
       {err && <p className="text-[11px] text-bad">{err}</p>}
+      {over && (
+        <div
+          data-testid="drop-overlay"
+          className="pointer-events-none fixed z-50 grid place-items-center rounded-md border-4 border-dashed border-hi bg-void/80"
+          style={{ left: over.left, top: over.top, width: over.width, height: over.height }}
+        >
+          <span className="pixel rounded-sm bg-hi px-3 py-1.5 text-[14px] font-bold text-void">여기에 놓으면 첨부됩니다 (.txt .md .csv .pdf)</span>
+        </div>
+      )}
     </div>
   );
 }

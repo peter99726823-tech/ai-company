@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import { useOffice } from "@/store/officeStore";
 import { EMPLOYEES } from "@/domain/employees";
 import { portraitDataUrl } from "@/game/sprites/characterArt";
@@ -19,6 +19,7 @@ export function MeetingDialog({ data, health, reload }: { data: OfficeSnapshot |
   const [topic, setTopic] = useState("");
   const [projectId, setProjectId] = useState("");
   const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const formRef = useRef<HTMLFormElement>(null);
   const [picked, setPicked] = useState<string[]>(DEFAULT);
   const apiReady = !!health?.worker.running && !!health?.ai.keyConfigured;
   const [mode, setMode] = useState<"manual" | "api">("manual");
@@ -68,7 +69,7 @@ export function MeetingDialog({ data, health, reload }: { data: OfficeSnapshot |
 
   return (
     <div className="fixed inset-0 z-40 grid place-items-center bg-black/60 p-3" onClick={() => setOpen(false)} role="dialog" aria-modal="true" aria-label="회의 소집">
-      <form onSubmit={submit} onClick={(e) => e.stopPropagation()} className="px-frame scroll-thin max-h-[92dvh] w-full max-w-xl space-y-3 overflow-y-auto rounded-md bg-panel p-4 text-[13px]">
+      <form ref={formRef} onSubmit={submit} onClick={(e) => e.stopPropagation()} className="px-frame scroll-thin max-h-[92dvh] w-full max-w-xl space-y-3 overflow-y-auto rounded-md bg-panel p-4 text-[13px]">
         <div className="flex items-center justify-between">
           <h2 className="pixel text-[16px] font-bold">회의 소집</h2>
           <button type="button" onClick={() => setOpen(false)} className="pixel text-muted hover:text-ink" aria-label="닫기">
@@ -86,7 +87,7 @@ export function MeetingDialog({ data, health, reload }: { data: OfficeSnapshot |
             className="mt-1 w-full resize-y rounded-sm border-2 border-line bg-panel-2 px-2 py-1.5"
           />
         </label>
-        <AttachmentPicker value={attachments} onChange={setAttachments} />
+        <AttachmentPicker value={attachments} onChange={setAttachments} dropRef={formRef} />
         <label className="block">
           <span className="pixel text-[12px] text-muted">관련 프로젝트</span>
           <select id="meeting-project" value={projectId} onChange={(e) => setProjectId(e.target.value)} className="mt-1 w-full rounded-sm border-2 border-line bg-panel-2 px-2 py-1.5">

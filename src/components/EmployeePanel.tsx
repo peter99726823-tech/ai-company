@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import { useOffice } from "@/store/officeStore";
 import { toGame, type Destination } from "@/game/bridge";
 import { EMPLOYEE_BY_ID } from "@/domain/employees";
@@ -34,6 +34,7 @@ export function EmployeePanel({ data, health, reload }: { data: OfficeSnapshot |
   const [type, setType] = useState("GENERAL");
   const [execMode, setExecMode] = useState<"api" | "manual">("manual");
   const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const orderForm = useRef<HTMLFormElement>(null);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<{ tone: "ok" | "bad"; text: string } | null>(null);
 
@@ -254,7 +255,7 @@ export function EmployeePanel({ data, health, reload }: { data: OfficeSnapshot |
           </details>
         </div>
       ) : (
-        <form className="space-y-2 p-3 text-[13px]" onSubmit={submit}>
+        <form ref={orderForm} className="space-y-2 p-3 text-[13px]" onSubmit={submit} data-testid="order-form">
           <label className="block">
             <span className="pixel text-[12px] text-muted">업무 유형</span>
             <select id="order-type" value={type} onChange={(e) => setType(e.target.value)} className="mt-1 w-full rounded-sm border-2 border-line bg-panel-2 px-2 py-1.5">
@@ -312,7 +313,7 @@ export function EmployeePanel({ data, health, reload }: { data: OfficeSnapshot |
               className="mt-1 w-full resize-y rounded-sm border-2 border-line bg-panel-2 px-2 py-1.5"
             />
           </label>
-          <AttachmentPicker value={attachments} onChange={setAttachments} />
+          <AttachmentPicker value={attachments} onChange={setAttachments} dropRef={orderForm} />
           {typeDef?.upload && !attachments.length && <p className="text-[11px] text-warn">계약서 파일(.txt .md .pdf)을 첨부해 주세요. 한글·워드 파일은 본문을 복사해 붙여넣으세요.</p>}
           <button type="submit" disabled={busy || !instruction.trim() || !typeDef?.supported} className="pixel w-full rounded-sm bg-hi py-2 text-[13px] font-bold text-void disabled:cursor-not-allowed disabled:opacity-40">
             {busy ? "등록 중…" : "업무 지시하기"}

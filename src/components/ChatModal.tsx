@@ -35,6 +35,7 @@ export function ChatModal({ data, health, reload }: { data: OfficeSnapshot | nul
   const apiReady = !!health?.worker.running && !!health?.ai.keyConfigured;
   const [mode, setMode] = useState<"manual" | "api">("manual");
   const listRef = useRef<HTMLDivElement>(null);
+  const windowRef = useRef<HTMLDivElement>(null);
   const emp = id ? EMPLOYEE_BY_ID[id] : null;
   const portrait = useMemo(() => (emp ? portraitDataUrl(emp.look, 3) : ""), [emp]);
 
@@ -83,7 +84,7 @@ export function ChatModal({ data, health, reload }: { data: OfficeSnapshot | nul
 
   return (
     <div className="fixed inset-0 z-40 grid place-items-center bg-black/60 p-3" onClick={close} role="dialog" aria-modal="true" aria-label={`${emp.name}와 대화`}>
-      <div className="px-frame flex h-[88dvh] w-full max-w-2xl flex-col overflow-hidden rounded-md bg-panel" onClick={(e) => e.stopPropagation()}>
+      <div ref={windowRef} className="px-frame flex h-[88dvh] w-full max-w-2xl flex-col overflow-hidden rounded-md bg-panel" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center gap-3 border-b-2 border-line p-3" style={{ boxShadow: `inset 0 3px 0 ${emp.look.accent}` }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={portrait} alt="" width={32} height={48} className="pixelated h-12 w-8" />
@@ -153,7 +154,7 @@ export function ChatModal({ data, health, reload }: { data: OfficeSnapshot | nul
               보내기
             </button>
           </div>
-          <AttachmentPicker value={attachments} onChange={setAttachments} compact />
+          <AttachmentPicker value={attachments} onChange={setAttachments} compact dropRef={windowRef} />
           <div className="flex items-center gap-3 text-[11px] text-muted">
             <label className="flex items-center gap-1">
               <input type="radio" name="chat-mode" checked={mode === "manual"} onChange={() => setMode("manual")} /> 붙여넣기 (무료)

@@ -255,6 +255,66 @@ try {
   check("아이디어 → 회의 열기", (await room4.innerText()).includes("카페 재고"));
   await room4.getByRole("button", { name: "닫기" }).click();
 
+  // ── drag & drop ──
+  // Simulates a real OS file drag: dragenter → dragover → drop with a DataTransfer holding Files.
+  const dropFiles = (selector, files, { dropIt = true } = {}) =>
+    page.evaluate(
+      async ({ selector, files, dropIt }) => {
+        const el = document.querySelector(selector);
+        const dt = new DataTransfer();
+        for (const f of files) dt.items.add(new File([f.text], f.name, { type: f.type }));
+        const fire = (type, target = el) => target.dispatchEvent(new DragEvent(type, { bubbles: true, cancelable: true, dataTransfer: dt }));
+        fire("dragenter");
+        fire("dragover");
+        await new Promise((r) => setTimeout(r, 80)); // let React draw the hint
+        const overlay = !!document.querySelector("[data-testid=drop-overlay]");
+        if (dropIt) fire("drop");
+        else fire("dragleave");
+        return overlay;
+      },
+      { selector, files, dropIt },
+    );
+  await page.getByRole("button", { name: "회의 소집" }).click();
+  const shownOverlay = await dropFiles("[aria-label='회의 소집'] form", [{ name: "끌어놓기.txt", text: "DRAG-DROP-901 회의자료", type: "text/plain" }], { dropIt: false });
+  await page.waitForTimeout(100);
+  check("끌고 오면 '여기에 놓으면 첨부' 안내 표시, 벗어나면 사라짐", shownOverlay && (await page.locator("[data-testid=drop-overlay]").count()) === 0);
+  await dropFiles("[aria-label='회의 소집'] form", [
+    { name: "끌어놓기.txt", text: "DRAG-DROP-901 회의자료", type: "text/plain" },
+    { name: "표.csv", text: "항목,값\nA,1", type: "text/csv" },
+  ]);
+  const md2 = page.getByRole("dialog", { name: "회의 소집" });
+  await md2.locator("[data-testid=attachments]").getByText("끌어놓기.txt").waitFor({ timeout: 10000 });
+  await md2.locator("[data-testid=attachments]").getByText("표.csv").waitFor();
+  check("회의 소집 창에 파일 2개 끌어놓기 → 첨부", true);
+  await page.fill("#meeting-topic", "끌어놓기 회의");
+  await md2.getByRole("button", { name: "회의 시작" }).click();
+  const room5 = page.getByRole("dialog", { name: "회의실" });
+  await page.waitForFunction(() => (document.querySelector("[aria-label='회의실'] textarea[readonly]")?.value ?? "").includes("DRAG-DROP-901"), null, { timeout: 10000 });
+  check("끌어놓은 파일 내용이 회의 지시문에 포함", true);
+  await room5.getByRole("button", { name: "닫기" }).click();
+
+  await clickEmployee("ops");
+  await page.locator("aside").getByRole("button", { name: "대화하기" }).click();
+  await dropFiles("[aria-label='태오와 대화'] > div", [{ name: "스펙.md", text: "# 스펙 DROP-CHAT-33", type: "text/markdown" }]);
+  await page.getByRole("dialog", { name: /태오와 대화/ }).locator("[data-testid=attachments]").getByText("스펙.md").waitFor({ timeout: 10000 });
+  check("대화창에 끌어놓기 → 첨부", true);
+  await page.getByRole("dialog", { name: /태오와 대화/ }).getByRole("button", { name: "닫기" }).click();
+
+  await page.locator("aside").getByRole("button", { name: "업무 지시", exact: true }).first().click();
+  await dropFiles("[data-testid=order-form]", [{ name: "자료.txt", text: "ORDER-DROP-7", type: "text/plain" }]);
+  await page.locator("[data-testid=order-form] [data-testid=attachments]").getByText("자료.txt").waitFor({ timeout: 10000 });
+  check("업무 지시 양식에 끌어놓기 → 첨부", true);
+  const before = page.url();
+  await page.evaluate(() => {
+    const dt = new DataTransfer();
+    dt.items.add(new File(["x"], "밖.txt", { type: "text/plain" }));
+    const ev = new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer: dt });
+    document.querySelector("canvas").dispatchEvent(ev);
+    window.__dropPrevented = ev.defaultPrevented;
+  });
+  check("창 밖(사무실 화면)에 떨어뜨려도 브라우저가 파일을 열지 않음", (await page.evaluate(() => window.__dropPrevented)) && page.url() === before);
+  await page.locator("aside").getByRole("button", { name: "닫기" }).click();
+
   check("콘솔 오류 없음", errors.length === 0, errors.slice(0, 2).join(" | "));
 } catch (e) {
   check("시나리오 실행", false, e.message.split("\n")[0]);
