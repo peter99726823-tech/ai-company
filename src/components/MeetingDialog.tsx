@@ -8,6 +8,7 @@ import { AttachmentPicker } from "./AttachmentPicker";
 import type { Attachment } from "@/domain/attachments";
 import type { OfficeSnapshot } from "@/server/services/office";
 import type { Health } from "@/hooks/useOfficeData";
+import { useSample } from "@/lib/claudeSample";
 
 const DEFAULT = ["ceo-advisor", "validator", "cto", "marketing", "pricing"];
 
@@ -22,7 +23,9 @@ export function MeetingDialog({ data, health, reload }: { data: OfficeSnapshot |
   const formRef = useRef<HTMLFormElement>(null);
   const [picked, setPicked] = useState<string[]>(DEFAULT);
   const apiReady = !!health?.worker.running && !!health?.ai.keyConfigured;
-  const [mode, setMode] = useState<"manual" | "api">("manual");
+  const [mode, setMode] = useState<"manual" | "api" | "claude">("manual");
+  const sample = useSample();
+  const claudeReady = typeof sample === "function";
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const portraits = useMemo(() => (typeof document === "undefined" ? {} : Object.fromEntries(EMPLOYEES.map((e) => [e.id, portraitDataUrl(e.look, 2)]))), []);
@@ -30,14 +33,14 @@ export function MeetingDialog({ data, health, reload }: { data: OfficeSnapshot |
   useEffect(() => {
     if (open) {
       setErr(null);
-      setMode(apiReady ? "api" : "manual");
+      setMode(apiReady ? "api" : claudeReady ? "claude" : "manual");
       const draft = useOffice.getState().meetingTopicDraft;
       if (draft) {
         setTopic(draft);
         useOffice.setState({ meetingTopicDraft: "" });
       }
     }
-  }, [open, apiReady]);
+  }, [open, apiReady, claudeReady]);
   if (!open) return null;
 
   const toggle = (id: string) => {
@@ -52,7 +55,7 @@ export function MeetingDialog({ data, health, reload }: { data: OfficeSnapshot |
     const r = await fetch("/api/meetings", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ topic, participantIds: picked, projectId: projectId || null, executionMode: mode, attachments }),
+      body: JSON.stringify({ topic, participantIds: picked, projectId: projectId || null, executionMode: mode === "api" ? "api" : "manual", attachments }),
     });
     const j = await r.json().catch(() => ({}));
     setBusy(false);
@@ -64,6 +67,7 @@ export function MeetingDialog({ data, health, reload }: { data: OfficeSnapshot |
     setTopic("");
     setAttachments([]);
     reload();
+    useOffice.setState({ autoMeetingId: mode === "claude" ? j.meeting.id : null });
     openMeeting(j.meeting.id);
   }
 
@@ -126,6 +130,15 @@ export function MeetingDialog({ data, health, reload }: { data: OfficeSnapshot |
         </fieldset>
         <fieldset className="space-y-1">
           <legend className="pixel text-[12px] text-muted">진행 방식</legend>
+          {claudeReady && (
+            <label className="flex items-start gap-2 rounded-sm border-2 border-hi/70 p-2">
+              <input type="radio" name="mode" checked={mode === "claude"} onChange={() => setMode("claude")} className="mt-1" />
+              <span>
+                <b className="pixel text-[12px]">⚡ Claude 자동 (추천 · API 키 없이)</b>
+                <span className="block text-[12px] text-muted">회의를 시작하면 Claude가 바로 부서별 의견과 종합을 작성해 저장합니다. 로그인한 claude.ai 계정의 사용량을 씁니다.</span>
+              </span>
+            </label>
+          )}
           <label className="flex items-start gap-2 rounded-sm border border-line p-2">
             <input type="radio" name="mode" checked={mode === "manual"} onChange={() => setMode("manual")} className="mt-1" />
             <span>
@@ -148,7 +161,7 @@ export function MeetingDialog({ data, health, reload }: { data: OfficeSnapshot |
         </p>
         {err && <p className="rounded-sm bg-bad/10 p-2 text-[12px] text-bad">{err}</p>}
         <button type="submit" disabled={busy || !topic.trim() || picked.length < 2} className="pixel w-full rounded-sm bg-hi py-2 text-[14px] font-bold text-void disabled:opacity-40">
-          {busy ? "소집 중…" : "회의 시작"}
+          {busy ? "소집 중…" : mode === "claude" ? "회의 시작 (Claude가 바로 진행)" : "회의 시작"}
         </button>
       </form>
     </div>

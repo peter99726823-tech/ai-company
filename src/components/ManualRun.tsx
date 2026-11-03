@@ -1,17 +1,42 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { EMPLOYEE_BY_ID } from "@/domain/employees";
+import { useSample, sampleErrorText, promptBytes, MAX_PROMPT_BYTES, type SampleError } from "@/lib/claudeSample";
 
 /**
- * Manual (free) execution: copy the prompt → paste into claude.ai → paste the answer back.
- * The server validates the answer; nothing is saved if it doesn't fit.
+ * Running a task without an API key.
+ * - "Claude 자동" (link version inside claude.ai): the page asks Claude on the viewer's own account,
+ *   streams the answer into the box and submits it.
+ * - Copy/paste: copy the prompt → claude.ai → paste the answer into the big box.
+ * Either way the server validates the answer; nothing is saved if it doesn't fit.
  */
-export function ManualRun({ taskId, onDone, meeting, submitLabel }: { taskId: string; onDone: () => void; meeting?: boolean; submitLabel?: string }) {
+export function ManualRun({
+  taskId,
+  onDone,
+  meeting,
+  submitLabel,
+  autoStart,
+}: {
+  taskId: string;
+  onDone: () => void;
+  meeting?: boolean;
+  submitLabel?: string;
+  autoStart?: boolean;
+}) {
   const [prompt, setPrompt] = useState<string>("");
   const [answer, setAnswer] = useState("");
   const [copied, setCopied] = useState<"ok" | "manual" | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [pasteNote, setPasteNote] = useState<string | null>(null);
+  const [running, setRunning] = useState<{ since: number; ctl: AbortController } | null>(null);
+  const [elapsed, setElapsed] = useState(0);
+  const [autoErr, setAutoErr] = useState<string | null>(null);
+  const answerRef = useRef<HTMLTextAreaElement>(null);
+  const started = useRef(false);
+  const sample = useSample();
+  const minLen = submitLabel ? 1 : 40;
 
   useEffect(() => {
     fetch(`/api/tasks/${taskId}/prompt`)
@@ -20,71 +45,188 @@ export function ManualRun({ taskId, onDone, meeting, submitLabel }: { taskId: st
       .catch((e) => setErr((e as Error).message));
   }, [taskId]);
 
+  useEffect(() => {
+    if (!running) return;
+    const t = setInterval(() => setElapsed(Math.round((Date.now() - running.since) / 1000)), 1000);
+    return () => clearInterval(t);
+  }, [running]);
+  useEffect(() => () => running?.ctl.abort(), [running]);
+
+  // Meeting answers: show which departments the pasted text already contains.
+  const participants = useMemo(() => (/PARTICIPANTS: ([a-z,-]+)/.exec(prompt)?.[1] ?? "").split(",").filter(Boolean), [prompt]);
+  const check = useMemo(() => {
+    if (!meeting || !participants.length) return null;
+    const found = participants.map((id) => ({ id, ok: new RegExp(`^===\\s*부서:\\s*${id}\\b`, "m").test(answer) }));
+    return { found, summary: /^===\s*종합/m.test(answer), complete: found.every((f) => f.ok) && /^===\s*종합/m.test(answer) };
+  }, [meeting, participants, answer]);
+
+  const tooBig = !!prompt && promptBytes(prompt) > MAX_PROMPT_BYTES;
+  const canAuto = typeof sample === "function" && !!prompt && !tooBig;
+
+  async function submitText(text: string) {
+    setBusy(true);
+    setErr(null);
+    const r = await fetch(`/api/tasks/${taskId}/submit`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text }) });
+    const j = await r.json().catch(() => ({}));
+    setBusy(false);
+    if (!r.ok) {
+      setErr(j.error ?? "저장하지 못했습니다.");
+      return false;
+    }
+    setAnswer("");
+    onDone();
+    return true;
+  }
+
+  async function runAuto() {
+    if (typeof sample !== "function" || !prompt || running) return;
+    const ctl = new AbortController();
+    setAutoErr(null);
+    setErr(null);
+    setAnswer("");
+    setElapsed(0);
+    setRunning({ since: Date.now(), ctl });
+    try {
+      const res = await sample(prompt, { onText: ({ text }) => setAnswer(text), signal: ctl.signal, modelTier: "default", cache: false });
+      setRunning(null);
+      setAnswer(res.text);
+      if (res.truncated) setAutoErr("답이 길이 한도에서 끊겼습니다. 저장을 시도합니다. 실패하면 다시 누르세요.");
+      await submitText(res.text);
+    } catch (e) {
+      setRunning(null);
+      const se = e as SampleError;
+      if (se.text) setAnswer(se.text);
+      if (se.code !== "cancelled") setAutoErr(sampleErrorText(se));
+    }
+  }
+
+  // Started from "회의 시작" with Claude 자동 chosen: that click is the viewer's explicit action.
+  useEffect(() => {
+    if (autoStart && canAuto && !started.current) {
+      started.current = true;
+      void runAuto();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoStart, canAuto]);
+
   async function copy() {
     try {
       await navigator.clipboard.writeText(prompt);
       setCopied("ok");
     } catch {
       const el = document.getElementById(`prompt-${taskId}`) as HTMLTextAreaElement | null;
-      el?.select();
+      if (el) {
+        (el.closest("details") as HTMLDetailsElement | null)?.setAttribute("open", "");
+        el.select();
+      }
       setCopied("manual");
     }
   }
 
-  async function submit() {
-    setBusy(true);
-    setErr(null);
-    const r = await fetch(`/api/tasks/${taskId}/submit`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text: answer }) });
-    const j = await r.json().catch(() => ({}));
-    setBusy(false);
-    if (!r.ok) {
-      setErr(j.error ?? "저장하지 못했습니다.");
-      return;
+  async function pasteFromClipboard() {
+    setPasteNote(null);
+    try {
+      const t = await navigator.clipboard.readText();
+      if (!t.trim()) {
+        setPasteNote("클립보드가 비어 있습니다. claude.ai 답변 아래의 복사 버튼을 먼저 누르세요.");
+        return;
+      }
+      setAnswer(t);
+    } catch {
+      setPasteNote("브라우저가 클립보드 읽기를 막았습니다. 아래 칸을 누르고 Ctrl+V(맥은 ⌘V)로 붙여넣으세요.");
+      answerRef.current?.focus();
     }
-    setAnswer("");
-    onDone();
   }
+
+  const label = submitLabel ?? (meeting ? "회의록 제출" : "보고서 제출");
 
   return (
     <div className="space-y-3 text-[13px]" data-testid="manual-run">
-      <ol className="space-y-3">
-        <li className="rounded-sm border border-line bg-panel-2 p-2">
-          <div className="pixel mb-1 text-[12px] text-hi">1. 지시문 복사</div>
-          <p className="mb-2 text-[12px] text-muted">
-            {meeting ? "참석 부서와 진행 규칙이 모두 들어 있는 회의 지시문입니다." : "직원 역할과 프로젝트 정보가 들어 있는 지시문입니다."} 그대로 복사하세요.
+      {typeof sample === "function" && (
+        <section className="rounded-sm border-2 border-hi bg-hi/10 p-3" data-testid="auto-run">
+          <div className="pixel text-[13px] font-bold text-hi">⚡ Claude 자동 진행 (API 키 없이)</div>
+          <p className="mt-1 text-[12px] text-muted">
+            {meeting ? "부서별 의견과 종합을 Claude가 바로 작성하고 저장합니다." : "Claude가 바로 답을 작성하고 저장합니다."} 지금 로그인한 claude.ai 계정의 사용량을 씁니다(API 비용 없음). 처음 한 번은 허용 창이 뜹니다.
           </p>
-          <textarea id={`prompt-${taskId}`} readOnly value={prompt} rows={5} className="w-full resize-y rounded-sm border border-line bg-void p-2 font-mono text-[11px] text-muted" />
-          <button type="button" onClick={copy} disabled={!prompt} className="pixel mt-1 rounded-sm bg-hi px-3 py-1 text-[12px] font-bold text-void disabled:opacity-40">
+          {running ? (
+            <div className="mt-2 flex items-center gap-2">
+              <span className="pixel flex-1 text-[12px] text-info">
+                {answer ? `작성 중… ${answer.length.toLocaleString()}자` : "생각 중…"} ({elapsed}초 · 보통 1~3분, 창을 닫으면 중지)
+              </span>
+              <button type="button" onClick={() => running.ctl.abort()} className="pixel rounded-sm border-2 border-line px-3 py-1 text-[12px] hover:border-bad">
+                중지
+              </button>
+            </div>
+          ) : (
+            <button type="button" onClick={runAuto} disabled={!canAuto || busy} className="pixel mt-2 w-full rounded-sm bg-hi py-2 text-[14px] font-bold text-void disabled:opacity-40">
+              {busy ? "저장 중…" : answer && autoErr ? "다시 맡기기" : meeting ? "Claude에게 회의 맡기기" : "Claude에게 맡기기"}
+            </button>
+          )}
+          {tooBig && <p className="mt-1 text-[12px] text-warn">지시문이 자동 진행 한도(256KB)를 넘습니다. 첨부를 줄이거나 아래 붙여넣기 방식을 쓰세요.</p>}
+          {autoErr && <p className="mt-1 rounded-sm bg-bad/10 p-2 text-[12px] text-bad">{autoErr}</p>}
+          <p className="mt-2 text-[11px] text-muted">또는 아래처럼 직접 복사·붙여넣기 할 수 있습니다.</p>
+        </section>
+      )}
+
+      <section className="rounded-sm border border-line bg-panel-2 p-2">
+        <div className="pixel mb-1 text-[12px] text-hi">① 지시문 복사 → ② claude.ai에 붙여넣어 보내기</div>
+        <div className="flex flex-wrap items-center gap-2">
+          <button type="button" onClick={copy} disabled={!prompt} className="pixel rounded-sm bg-hi px-3 py-1.5 text-[13px] font-bold text-void disabled:opacity-40">
             지시문 복사
           </button>
-          {copied === "ok" && <span className="pixel ml-2 text-[11px] text-ok">복사했습니다</span>}
-          {copied === "manual" && <span className="pixel ml-2 text-[11px] text-warn">자동 복사가 막혀 전체를 선택했습니다. Ctrl+C로 복사하세요.</span>}
-        </li>
-        <li className="rounded-sm border border-line bg-panel-2 p-2">
-          <div className="pixel mb-1 text-[12px] text-hi">2. claude.ai에 붙여넣기</div>
-          <p className="text-[12px] text-muted">
-            <a href="https://claude.ai/new" target="_blank" rel="noreferrer" className="text-info underline">
-              claude.ai
-            </a>
-            에서 새 대화를 열고 붙여넣어 보냅니다. 무료 플랜으로도 됩니다. API 비용은 들지 않습니다.
-          </p>
-        </li>
-        <li className="rounded-sm border border-line bg-panel-2 p-2">
-          <div className="pixel mb-1 text-[12px] text-hi">3. 답변 전체를 복사해 여기에 붙여넣기</div>
-          <textarea
-            id={`answer-${taskId}`}
-            value={answer}
-            onChange={(e) => setAnswer(e.target.value)}
-            rows={6}
-            placeholder={meeting ? "=== 부서: ... 로 시작하는 답변 전체를 붙여넣으세요" : "답변 전체를 붙여넣으세요"}
-            className="w-full resize-y rounded-sm border-2 border-line bg-void p-2 text-[12px]"
-          />
-          {err && <p className="mt-1 rounded-sm bg-bad/10 p-2 text-[12px] text-bad">{err}</p>}
-          <button type="button" onClick={submit} disabled={busy || answer.trim().length < (submitLabel ? 2 : 40)} className="pixel mt-1 w-full rounded-sm bg-hi py-1.5 text-[13px] font-bold text-void disabled:opacity-40">
-            {busy ? "확인 중…" : (submitLabel ?? (meeting ? "회의록 제출" : "보고서 제출"))}
+          <a href="https://claude.ai/new" target="_blank" rel="noreferrer" className="pixel rounded-sm border-2 border-line px-3 py-1 text-[13px] hover:border-hi">
+            claude.ai 열기 ↗
+          </a>
+          {copied === "ok" && <span className="pixel text-[12px] text-ok">복사했습니다. claude.ai 새 대화에 붙여넣어 보내세요.</span>}
+          {copied === "manual" && <span className="pixel text-[12px] text-warn">자동 복사가 막혀 전체를 선택했습니다. Ctrl+C로 복사하세요.</span>}
+        </div>
+        <details className="mt-1">
+          <summary className="cursor-pointer text-[11px] text-muted">
+            지시문 내용 보기 ({prompt.length.toLocaleString()}자 · {meeting ? "참석 부서와 진행 규칙 포함" : "직원 역할과 프로젝트 정보 포함"})
+          </summary>
+          <textarea id={`prompt-${taskId}`} readOnly value={prompt} rows={5} className="mt-1 w-full resize-y rounded-sm border border-line bg-void p-2 font-mono text-[11px] text-muted" />
+        </details>
+      </section>
+
+      <section className="rounded-sm border-2 border-hi/60 bg-panel-2 p-2" data-testid="answer-box">
+        <div className="mb-1 flex flex-wrap items-center gap-2">
+          <div className="pixel flex-1 text-[13px] font-bold text-hi">③ 받은 답변 붙여넣기</div>
+          <button type="button" onClick={pasteFromClipboard} className="pixel rounded-sm border-2 border-line px-2 py-0.5 text-[12px] hover:border-hi">
+            📋 클립보드에서 붙여넣기
           </button>
-        </li>
-      </ol>
+        </div>
+        <p className="mb-1 text-[11px] text-muted">claude.ai 답변 맨 아래의 복사 버튼을 누른 뒤, 위 버튼을 누르거나 아래 칸에 Ctrl+V 하세요.</p>
+        {pasteNote && <p className="mb-1 text-[12px] text-warn">{pasteNote}</p>}
+        <textarea
+          ref={answerRef}
+          id={`answer-${taskId}`}
+          value={answer}
+          onChange={(e) => setAnswer(e.target.value)}
+          readOnly={!!running}
+          placeholder={meeting ? "여기에 붙여넣기 (=== 부서: ... 로 시작하는 답변 전체)" : "여기에 답변 전체를 붙여넣기"}
+          className="block h-[max(220px,38vh)] w-full resize-y rounded-sm border-2 border-line bg-void p-2 text-[12px] leading-relaxed focus:border-hi focus:outline-none"
+        />
+        <div className="mt-1 flex flex-wrap items-center gap-1 text-[11px]">
+          <span className="text-muted tabular-nums">{answer.length.toLocaleString()}자</span>
+          {check &&
+            check.found.map((f) => (
+              <span key={f.id} className={`pixel rounded-sm border px-1 ${f.ok ? "border-ok text-ok" : "border-line text-muted"}`} title={f.ok ? "발언 있음" : "아직 없음"}>
+                {f.ok ? "✓" : "·"} {EMPLOYEE_BY_ID[f.id]?.name ?? f.id}
+              </span>
+            ))}
+          {check && <span className={`pixel rounded-sm border px-1 ${check.summary ? "border-ok text-ok" : "border-line text-muted"}`}>{check.summary ? "✓" : "·"} 종합</span>}
+          {check && answer.trim() && !check.complete && !running && <span className="text-warn">빠진 부서가 있으면 저장되지 않습니다. 답변 전체를 복사했는지 확인하세요.</span>}
+        </div>
+        {err && <p className="mt-1 rounded-sm bg-bad/10 p-2 text-[12px] text-bad">{err}</p>}
+        <button
+          type="button"
+          onClick={() => void submitText(answer)}
+          disabled={busy || !!running || answer.trim().length < minLen}
+          className="pixel mt-2 w-full rounded-sm bg-hi py-2 text-[14px] font-bold text-void disabled:opacity-40"
+        >
+          {busy ? "확인 중…" : label}
+        </button>
+      </section>
     </div>
   );
 }

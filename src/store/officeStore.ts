@@ -37,6 +37,8 @@ interface OfficeState {
   chatEmployeeId: string | null;
   panel: null | "projects" | "finance" | "settings" | "ideas";
   meetingTopicDraft: string;
+  /** Meeting whose answer Claude should write right away (link version, "Claude 자동"). */
+  autoMeetingId: string | null;
   toasts: Toast[];
   setReady: () => void;
   setSelected: (id: string | null) => void;
@@ -73,6 +75,7 @@ export const useOffice = create<OfficeState>((set) => ({
   chatEmployeeId: null,
   panel: null,
   meetingTopicDraft: "",
+  autoMeetingId: null,
   toasts: [],
   setReady: () => set({ ready: true }),
   setSelected: (id) => set({ selectedId: id }),

@@ -1,0 +1,125 @@
+// Link version "Claude 자동": window.claude.use("sample") is SIMULATED here (TEST ONLY) — the real one
+// exists only inside claude.ai. Checks: auto option shown, meeting written + saved without pasting,
+// paste box live check, error path, and top bar not clipped at narrow widths.
+//   node lite/build.mjs && node e2e/lite-auto.mjs
+import { createRequire } from "node:module";
+import http from "node:http";
+import fs from "node:fs";
+import path from "node:path";
+const require = createRequire(import.meta.url);
+const { chromium } = require("playwright");
+
+const ROOT = new URL("..", import.meta.url).pathname;
+const OUT = path.join(ROOT, "e2e/out/");
+fs.mkdirSync(OUT, { recursive: true });
+const page0 = fs.readFileSync(path.join(ROOT, "lite/dist/index.html"), "utf8");
+const html = `<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1"></head><body>${page0}</body></html>`;
+const server = http.createServer((_q, r) => (r.writeHead(200, { "content-type": "text/html; charset=utf-8" }), r.end(html))).listen(4457);
+const results = [];
+const check = (n, ok, d = "") => (results.push(ok), console.log(`${ok ? "PASS" : "FAIL"}  ${n}${d ? `  — ${d}` : ""}`));
+
+// Fake `sample`: answers in the meeting format for whoever is in PARTICIPANTS, streaming in pieces.
+const fake = (mode) => `
+  window.__sampleCalls = 0;
+  const sample = async (input, opts = {}) => {
+    window.__sampleCalls++;
+    if (${JSON.stringify(mode)} === "deny") throw { code: "not_granted", message: "denied" };
+    const ids = /PARTICIPANTS: ([a-z,-]+)/.exec(input)[1].split(",");
+    const full = ids.map((id) => "=== 부서: " + id + " | x ===\\n[테스트 문구] " + id + " 의견입니다. 근거와 대안.").join("\\n\\n") +
+      "\\n\\n=== 종합: CEO Advisor ===\\n## 회의 요약\\n[테스트 문구] 자동 종합입니다. 충분히 깁니다.\\n## 대표 결정 선택지\\n- [A] 진행\\n- [B] 보류\\n## 후속 업무 제안\\n- 담당: cto | 업무: 범위 정리\\n";
+    let text = "";
+    for (const part of full.match(/[\\s\\S]{1,60}/g)) {
+      await new Promise((r) => setTimeout(r, 15));
+      text += part; opts.onText && opts.onText({ text, delta: part });
+    }
+    return { text, truncated: false };
+  };
+  window.claude = { use: async (n) => (n === "sample" ? sample : null) };
+`;
+
+const browser = await chromium.launch();
+try {
+  // ── auto meeting ──
+  const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+  const errors = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  await page.addInitScript(fake("ok"));
+  await page.goto("http://localhost:4457/");
+  await page.getByText("사무실을 여는 중").waitFor({ state: "detached", timeout: 30000 });
+  await page.locator("header").getByText("Claude 자동").waitFor({ timeout: 5000 }).catch(() => {});
+  check("상단: Claude 자동 표시", (await page.locator("header").innerText()).includes("Claude 자동"));
+  await page.getByRole("button", { name: "회의 소집" }).click();
+  const dlg = page.getByRole("dialog", { name: "회의 소집" });
+  const auto = dlg.getByRole("radio").first();
+  check("회의 소집: Claude 자동이 기본 선택", await auto.isChecked());
+  await page.fill("#meeting-topic", "자동 회의 테스트");
+  await dlg.getByRole("button", { name: /회의 시작/ }).click();
+  const room = page.getByRole("dialog", { name: "회의실" });
+  await room.locator("[data-testid=statements] article").first().waitFor({ timeout: 20000 }).catch(async () => {
+    await page.screenshot({ path: OUT + "lite-auto-fail.png" });
+    console.log("DEBUG", await room.innerText());
+  });
+  check("붙여넣기 없이 부서별 발언 저장", (await room.locator("[data-testid=statements] article").count()) === 5);
+  check("Claude 호출은 한 번", (await page.evaluate(() => window.__sampleCalls)) === 1);
+  check("결정 선택지 표시", (await room.getByRole("radio").count()) === 2);
+  await room.getByRole("button", { name: "닫기" }).click();
+
+  // ── manual paste box with live check ──
+  await page.getByRole("button", { name: "회의 소집" }).click();
+  await page.fill("#meeting-topic", "붙여넣기 테스트");
+  await dlg.getByRole("radio").nth(1).check();
+  await dlg.getByRole("button", { name: /회의 시작/ }).click();
+  await room.getByTestId("answer-box").waitFor();
+  await page.waitForTimeout(400);
+  check("붙여넣기 방식은 자동 실행 안 함", (await page.evaluate(() => window.__sampleCalls)) === 1);
+  const box = room.getByTestId("answer-box");
+  const h = (await box.locator("textarea").boundingBox()).height;
+  check("답변 칸이 큼", h >= 220, `${Math.round(h)}px`);
+  await box.locator("textarea").fill("=== 부서: ceo-advisor | 한결 ===\n의견\n=== 부서: cto | 도윤 ===\n의견");
+  const chips = await box.innerText();
+  check("실시간 확인: 들어온 부서 ✓ 표시", chips.includes("✓ 한결") && chips.includes("✓ 도윤") && chips.includes("· 서진"));
+  check("빠진 부서 경고", chips.includes("빠진 부서가 있으면"));
+  await page.screenshot({ path: OUT + "lite-auto-paste.png" });
+  await room.getByRole("button", { name: "닫기" }).click();
+  await page.close();
+
+  // ── denied consent ──
+  const p2 = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+  await p2.addInitScript(fake("deny"));
+  await p2.goto("http://localhost:4457/");
+  await p2.getByText("사무실을 여는 중").waitFor({ state: "detached", timeout: 30000 });
+  await p2.getByRole("button", { name: "회의 소집" }).click();
+  await p2.fill("#meeting-topic", "거절 테스트");
+  await p2.getByRole("dialog", { name: "회의 소집" }).getByRole("button", { name: /회의 시작/ }).click();
+  const room2 = p2.getByRole("dialog", { name: "회의실" });
+  await room2.getByText("허용하지 않아").waitFor({ timeout: 10000 });
+  check("허용 거절 → 안내 + 붙여넣기 칸 그대로", await room2.getByTestId("answer-box").isVisible());
+  await p2.close();
+
+  // ── top bar at narrow widths: nothing clipped vertically, header height sane ──
+  for (const [w, hgt] of [[900, 600], [700, 600], [390, 760]]) {
+    const p = await browser.newPage({ viewport: { width: w, height: hgt } });
+    await p.goto("http://localhost:4457/");
+    await p.getByText("사무실을 여는 중").waitFor({ state: "detached", timeout: 30000 });
+    const r = await p.evaluate(() => {
+      const hd = document.querySelector("header");
+      const bad = [...hd.querySelectorAll("button,span")].filter((el) => {
+        const b = el.getBoundingClientRect();
+        return b.height > 0 && b.height < 12; // squashed
+      }).length;
+      const btn = [...hd.querySelectorAll("button")].find((b) => b.textContent.trim() === "회의 소집").getBoundingClientRect();
+      const meetVisible = btn.left >= 0 && btn.right <= innerWidth && btn.top >= 0;
+      return { h: hd.getBoundingClientRect().height, bad, docW: document.documentElement.scrollWidth, meetVisible };
+    });
+    check(`상단 바 ${w}px: 찌그러짐·가로 넘침 없음`, r.h < 130 && r.bad === 0 && r.docW <= w && r.meetVisible, `회의 소집 보임 ${r.meetVisible} · 높이 ${Math.round(r.h)} · 문서 폭 ${r.docW}`);
+    await p.screenshot({ path: OUT + `lite-top-${w}.png` });
+    await p.close();
+  }
+  check("페이지 오류 없음", errors.length === 0, errors.join(" | "));
+} finally {
+  await browser.close();
+  server.close();
+}
+const pass = results.filter(Boolean).length;
+console.log(`\n${pass}/${results.length} passed`);
+process.exit(pass === results.length ? 0 : 1);

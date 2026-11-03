@@ -31,7 +31,11 @@ function parseOptions(summary: string) {
 export function MeetingModal({ health, reload }: { health: Health | null; reload: () => void }) {
   const id = useOffice((s) => s.meetingId);
   const lastEvent = useOffice((s) => s.liveEvents[0]?.id);
-  const close = () => useOffice.getState().openMeeting(null);
+  const autoStart = useOffice((s) => !!s.meetingId && s.autoMeetingId === s.meetingId);
+  const close = () => {
+    useOffice.setState({ autoMeetingId: null });
+    useOffice.getState().openMeeting(null);
+  };
   const [d, setD] = useState<MeetingData | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [option, setOption] = useState("");
@@ -115,7 +119,7 @@ export function MeetingModal({ health, reload }: { health: Health | null; reload
         <div className="scroll-thin min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
           {err && <p className="text-bad">{err}</p>}
 
-          {d?.task && !done && d.task.status === "QUEUED" && d.task.executionMode === "manual" && <ManualRun taskId={d.task.id} meeting onDone={() => (reload(), void load())} />}
+          {d?.task && !done && d.task.status === "QUEUED" && d.task.executionMode === "manual" && <ManualRun taskId={d.task.id} meeting autoStart={autoStart} onDone={() => (reload(), void load())} />}
           {d?.task && !done && d.task.executionMode === "api" && ["QUEUED", "PLANNING", "RUNNING"].includes(d.task.status) && (
             <div className="rounded-sm border border-line bg-panel-2 p-3 text-[13px]">
               <div className="pixel text-info">{d.task.statusMessage}</div>

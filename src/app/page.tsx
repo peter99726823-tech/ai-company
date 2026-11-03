@@ -27,7 +27,7 @@ export default function Home() {
   useTaskDriver(data, ready);
 
   return (
-    <main className="grid h-dvh grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden">
+    <main className="grid h-dvh grid-cols-[minmax(0,1fr)] grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden">
       <TopBar data={data} health={health} live={live} />
       <div className="relative min-h-[320px] overflow-hidden">
         <PhaserGame />

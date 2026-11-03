@@ -19,18 +19,21 @@ import { useOfficeData } from "@/hooks/useOfficeData";
 import { useTaskDriver } from "@/hooks/useTaskDriver";
 import { useOffice } from "@/store/officeStore";
 import { saveState, type SaveState } from "./save";
+import { useSample } from "@/lib/claudeSample";
 
 export function App({ storeKind }: { storeKind: "artifact" | "local" }) {
   const { data, health, error, live, reload } = useOfficeData();
   const ready = useOffice((s) => s.ready);
   useTaskDriver(data, ready);
   const [save, setSave] = useState<SaveState>(saveState.get());
+  const sample = useSample();
   useEffect(() => saveState.subscribe(setSave), []);
 
   return (
-    <main className="grid h-dvh grid-rows-[auto_auto_minmax(0,1fr)_auto] overflow-hidden">
+    <main className="grid h-dvh grid-cols-[minmax(0,1fr)] grid-rows-[auto_auto_minmax(0,1fr)_auto] overflow-hidden">
       <div className="pixel flex flex-wrap items-center justify-center gap-x-3 bg-panel-2 px-3 py-1 text-center text-[11px] text-muted">
-        <span>링크 버전 · 업무와 회의는 claude.ai 붙여넣기 방식(무료)으로 처리합니다</span>
+        <span className="hidden sm:inline">{typeof sample === "function" ? "링크 버전 · 회의와 업무는 Claude 자동 또는 붙여넣기로 처리합니다 (API 키 없음)" : "링크 버전 · 업무와 회의는 claude.ai 붙여넣기 방식(무료)으로 처리합니다"}</span>
+        <span className="sm:hidden">링크 버전</span>
         <span className={save.status === "error" ? "text-bad" : save.status === "saving" ? "text-warn" : "text-ok"} data-testid="save-state">
           {save.status === "saving"
             ? "저장 중…"
