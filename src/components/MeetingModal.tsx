@@ -19,6 +19,12 @@ interface MeetingData {
 
 const md = (t: string) => DOMPurify.sanitize(marked.parse(t, { async: false }) as string);
 
+/** A long, Markdown agenda pasted as the topic: show its first line as the title. */
+function topicTitle(topic: string) {
+  const first = (topic.trim().split("\n").find((l) => l.trim()) ?? "").split(/\s#{2,}\s/)[0];
+  return first.replace(/^#+\s*/, "").replace(/^\[회의 안건\]\s*/, "").trim() || topic.slice(0, 80);
+}
+
 function parseOptions(summary: string) {
   const sec = /##\s*대표 결정 선택지[^\n]*\n([\s\S]*?)(?=\n##\s|$)/.exec(summary)?.[1] ?? "";
   return sec
@@ -102,7 +108,15 @@ export function MeetingModal({ health, reload }: { health: Health | null; reload
               회의실 · {d?.task ? TASK_STATUS_LABEL[d.task.status as TaskStatus] : ""}
               {d?.task?.executionMode === "manual" ? " · 붙여넣기 방식" : d ? " · API 자동" : ""}
             </div>
-            <h2 className="pixel mt-0.5 text-[16px] font-bold leading-snug">{d?.meeting.topic ?? "불러오는 중…"}</h2>
+            <h2 className="pixel mt-0.5 line-clamp-2 text-[16px] font-bold leading-snug" title={d?.meeting.topic}>
+              {d ? topicTitle(d.meeting.topic) : "불러오는 중…"}
+            </h2>
+            {d && (d.meeting.topic.trim().includes("\n") || d.meeting.topic.length > 120) && (
+              <details className="mt-1" data-testid="topic-full">
+                <summary className="cursor-pointer text-[11px] text-muted">안건 전체 보기 ({d.meeting.topic.length.toLocaleString()}자)</summary>
+                <div className="report scroll-thin mt-1 max-h-[30vh] overflow-y-auto rounded-sm border border-line bg-panel-2 p-2 text-[12px]" dangerouslySetInnerHTML={{ __html: md(d.meeting.topic) }} />
+              </details>
+            )}
             <div className="mt-1 flex flex-wrap gap-1">
               {d?.participants.map((p) => (
                 <span key={p.employeeId} className="pixel rounded-sm border border-line px-1.5 text-[11px]" style={{ color: EMPLOYEE_BY_ID[p.employeeId].look.accent }}>

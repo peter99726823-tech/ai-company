@@ -107,6 +107,25 @@ try {
     await p3.close();
   }
 
+  // ── long Markdown agenda as the topic: short title, full agenda folded ──
+  {
+    const p4 = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+    await p4.goto("http://localhost:4457/");
+    await p4.getByText("사무실을 여는 중").waitFor({ state: "detached", timeout: 30000 });
+    await p4.getByRole("button", { name: "회의 소집" }).click();
+    const d4 = p4.getByRole("dialog", { name: "회의 소집" });
+    await d4.getByRole("radio").nth(0).check();
+    await p4.fill("#meeting-topic", "# [회의 안건] 공모전 과제 확정\n## 0. 회의 목적\n- 7개 과제 중 하나를 고른다.\n## 1. 확인된 사실\n| 순위 | 과제 |\n|---|---|\n| 1 | A |");
+    await d4.getByRole("button", { name: /회의 시작/ }).click();
+    const r4 = p4.getByRole("dialog", { name: "회의실" });
+    await r4.getByTestId("answer-box").waitFor();
+    check("긴 안건: 제목은 첫 줄만", (await r4.locator("h2").first().innerText()).trim() === "공모전 과제 확정");
+    await r4.getByText(/안건 전체 보기/).click();
+    check("긴 안건: 전체 보기에 표로 표시", (await r4.getByTestId("topic-full").locator("table").count()) === 1);
+    await p4.screenshot({ path: OUT + "lite-long-topic.png" });
+    await p4.close();
+  }
+
   // ── denied consent ──
   const p2 = await browser.newPage({ viewport: { width: 1280, height: 800 } });
   await p2.addInitScript(fake("deny"));
