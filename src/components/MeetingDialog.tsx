@@ -39,6 +39,7 @@ const PRESETS: { label: string; hint: string; ids: string[] }[] = [
     hint: "부서마다 1명씩",
     ids: ["ceo-advisor", "validator", "cto", "marketing", "bookkeeper", "ops"],
   },
+  { label: "공모전 자문단", hint: "심사위원(서진)·현업 컨설턴트(은채)·AI 아키텍트(준서·도윤)·해커톤 전략(태오)·사업성(하린)", ids: ["ceo-advisor", "validator", "planner", "ai-engineer", "cto", "ops", "pricing"] },
   { label: "전원 소집", hint: "12명 모두", ids: EMPLOYEES.map((e) => e.id) },
 ];
 
@@ -311,10 +312,13 @@ export function MeetingDialog({
             id="meeting-topic"
             value={topic}
             onChange={(e) => setTopic(e.target.value)}
-            rows={3}
+            rows={4}
             placeholder="예: Number Maze를 계속 개발할지, 접고 AI 맞춤형 솔루션 영업에 집중할지"
             className="mt-1 w-full resize-y rounded-sm border-2 border-line bg-panel-2 px-2 py-1.5"
           />
+          <span className={`mt-0.5 block text-right text-[11px] tabular-nums ${topic.length > 20000 ? "text-bad" : "text-muted"}`}>
+            {topic.length.toLocaleString()} / 20,000자{topic.length > 20000 ? " · 너무 깁니다. 일부는 📎 파일로 첨부하세요" : ""}
+          </span>
         </label>
         {tab === "new" && (
           <AttachmentPicker

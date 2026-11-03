@@ -19,7 +19,7 @@ export function createMeeting(
 ) {
   const topic = input.topic?.trim();
   if (!topic) throw new TaskInputError("회의 주제를 입력하세요.");
-  if (topic.length > 4000) throw new TaskInputError("회의 주제가 너무 깁니다 (최대 4,000자).");
+  if (topic.length > 20000) throw new TaskInputError("회의 주제가 너무 깁니다 (최대 20,000자). 긴 자료는 📎 파일로 첨부하세요.");
   const ids = [...new Set(input.participantIds)].filter((id) => EMPLOYEE_BY_ID[id]);
   if (ids.length < 2) throw new TaskInputError("참석자를 2명 이상 고르세요.");
   let attachments: Attachment[];
