@@ -12,6 +12,9 @@ import {
   LOUNGE_SPOTS,
   REPORT_SPOTS,
   HALL_SPOTS,
+  DECOR,
+  CLOCKS,
+  STEAM,
   buildGrid,
   isWalkable,
   type Spot,
@@ -19,6 +22,18 @@ import {
 } from "../map/officeMap";
 import { buildSheet, ANIMS, FW, FH, FRAME_COUNT } from "../sprites/characterArt";
 import { buildBackground, buildFurniture, buildMonitor } from "../sprites/officeArt";
+import { Ambience, type Lighting } from "../effects/ambience";
+
+/** The viewer's lighting choice, remembered in this browser only (a per-viewer convenience). */
+export const LIGHTING_KEY = "aico-lighting";
+function initialLighting(): Lighting {
+  try {
+    const v = localStorage.getItem(LIGHTING_KEY);
+    return v === "day" || v === "night" ? v : "auto";
+  } catch {
+    return "auto";
+  }
+}
 import { EmployeeActor } from "../entities/EmployeeActor";
 import { toGame, fromGame, type ActorCommand, type Destination } from "../bridge";
 
@@ -30,6 +45,7 @@ export class OfficeScene extends Phaser.Scene {
   private speed = 1;
   private screens = new Map<string, Phaser.GameObjects.Graphics>();
   private rackLeds!: Phaser.GameObjects.Graphics;
+  private ambience!: Ambience;
   private t = 0;
   private reserved = new Map<string, string>(); // spotKey -> employeeId
   private drag: { x: number; y: number; sx: number; sy: number; moved: boolean } | null = null;
@@ -64,6 +80,15 @@ export class OfficeScene extends Phaser.Scene {
       this.screens.set(d.id, this.add.graphics().setDepth((f.y + f.h) * TILE + 0.1)); // painted per frame
     }
     this.rackLeds = this.add.graphics();
+    this.ambience = new Ambience(
+      this,
+      MAP_W,
+      MAP_H,
+      DECOR.filter((d) => d.kind === "window").map((d) => ({ x: d.x, y: d.y, w: d.w })),
+      CLOCKS,
+      STEAM,
+    );
+    this.ambience.mode = initialLighting();
 
     // employees: a few start in the lounge so the office looks lived-in from the first frame
     EMPLOYEES.forEach((p, i) => {
@@ -225,6 +250,7 @@ export class OfficeScene extends Phaser.Scene {
       }),
       toGame.on("command", (c) => this.command(c)),
       toGame.on("release", (id) => this.release(id)),
+      toGame.on("lighting", (m) => (this.ambience.mode = m)),
     );
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.unsub.forEach((u) => u()));
   }
@@ -397,7 +423,21 @@ export class OfficeScene extends Phaser.Scene {
     }
     this.paintScreens();
     this.paintLeds();
+    this.ambience.update(this.t, this.lampSpots());
     if (this.testMode) this.checkCollisions();
+  }
+
+  /** Desk lamps at night: one per desk whose owner is sitting there, plus the founder's own desk. */
+  private lampSpots() {
+    const out: { x: number; y: number }[] = [{ x: 6, y: 7 }];
+    for (const d of DESKS) {
+      const owner = [...this.actors.values()].find((a) => a.profile.deskId === d.id);
+      if (!owner || owner.moving) continue;
+      const tx = Math.floor(owner.sprite.x / TILE),
+        ty = Math.floor(owner.sprite.y / TILE);
+      if (Math.abs(tx - d.work.x) <= 1 && Math.abs(ty - d.work.y) <= 1) out.push({ x: d.work.x, y: d.work.y });
+    }
+    return out;
   }
 
   /** Monitor screens light up only while the desk owner is actually in the "working" state at the desk. */

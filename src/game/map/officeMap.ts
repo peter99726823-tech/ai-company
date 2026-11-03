@@ -57,6 +57,8 @@ export interface Furniture {
 
 export interface Decor {
   kind: DecorKind;
+  /** Rug colors [border, field, pattern]. */
+  colors?: [string, string, string];
   x: number;
   y: number;
   w: number;
@@ -179,7 +181,26 @@ export const DECOR: Decor[] = [
   { kind: "kanban", x: 47, y: 20, w: 3, h: 1 },
   { kind: "chartBoard", x: 34, y: 20, w: 3, h: 1 },
   { kind: "rug", x: 57, y: 27, w: 5, h: 4 },
+  // rugs that give each room a bit of character
+  { kind: "rug", x: 19, y: 25, w: 10, h: 7, colors: ["#3b2f5c", "#4a3a72", "#6a55a0"] },
+  { kind: "rug", x: 33, y: 10, w: 6, h: 3, colors: ["#1f4a4a", "#285c5b", "#3f8a86"] },
+  { kind: "rug", x: 3, y: 31, w: 10, h: 4, colors: ["#5a3420", "#6e4129", "#a0623a"] },
+  { kind: "rug", x: 47, y: 31, w: 6, h: 4, colors: ["#4a3a1c", "#5c4822", "#a0802f"] },
+  // windows (the sky in them follows the real time of day)
+  { kind: "window", x: 3, y: 0, w: 3, h: 1 },
+  { kind: "window", x: 39, y: 0, w: 2, h: 1 },
+  { kind: "window", x: 11, y: 20, w: 3, h: 1 },
+  { kind: "window", x: 41, y: 20, w: 2, h: 1 },
+  { kind: "window", x: 52, y: 20, w: 2, h: 1 },
+  { kind: "window", x: 60, y: 20, w: 2, h: 1 },
 ];
+
+/** Wall clocks (real local time) and the coffee machine's steam. */
+export const CLOCKS = [
+  { x: 8, y: 0 },
+  { x: 27, y: 20 },
+];
+export const STEAM = [{ x: 61, y: 22 }];
 
 export const DESKS: Desk[] = [
   { id: "desk-strategy-1", room: "strategy", furnitureId: "desk-strategy-1", work: { x: 17, y: 7 }, monitors: [{ x: 16.6, y: 8 }] },

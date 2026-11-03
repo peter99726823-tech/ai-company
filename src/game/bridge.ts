@@ -37,6 +37,7 @@ type ToGame = {
   speed: number;
   command: ActorCommand;
   release: string; // return an employee to ambient idling
+  lighting: "auto" | "day" | "night";
 };
 
 type FromGame = {

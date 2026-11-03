@@ -3,6 +3,38 @@
 import { toGame } from "@/game/bridge";
 import { useOffice } from "@/store/officeStore";
 import { EMPLOYEE_BY_ID } from "@/domain/employees";
+import { useEffect, useState } from "react";
+
+type Lighting = "auto" | "day" | "night";
+const LIGHT_LABEL: Record<Lighting, string> = { auto: "🌗 실제 시간", day: "☀️ 낮", night: "🌙 밤" };
+const NEXT: Record<Lighting, Lighting> = { auto: "day", day: "night", night: "auto" };
+
+function LightingButton({ cls }: { cls: string }) {
+  const [mode, setMode] = useState<Lighting>("auto");
+  useEffect(() => {
+    try {
+      const v = localStorage.getItem("aico-lighting");
+      if (v === "day" || v === "night") setMode(v);
+    } catch {}
+  }, []);
+  return (
+    <button
+      type="button"
+      className={cls}
+      title="사무실 조명: 실제 시간 → 낮 → 밤 (창밖 하늘과 밤 조명이 바뀝니다)"
+      onClick={() => {
+        const m = NEXT[mode];
+        setMode(m);
+        toGame.emit("lighting", m);
+        try {
+          localStorage.setItem("aico-lighting", m);
+        } catch {}
+      }}
+    >
+      {LIGHT_LABEL[mode]}
+    </button>
+  );
+}
 
 export function CameraHint() {
   return (
@@ -27,6 +59,7 @@ export function CameraControls() {
       <button type="button" className={btn} onClick={() => toGame.emit("zoomBy", 0.8)} aria-label="축소">
         −
       </button>
+      <LightingButton cls={btn} />
       {selectedId && (
         <button
           type="button"

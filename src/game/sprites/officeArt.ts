@@ -121,11 +121,16 @@ function drawDecor(ctx: Ctx, d: Decor) {
     W = d.w * TILE,
     H = d.h * TILE;
   switch (d.kind) {
-    case "rug":
-      rect(ctx, X + 2, Y + 2, W - 4, H - 4, "#5a2333");
-      rect(ctx, X + 5, Y + 5, W - 10, H - 10, "#6e2d40");
-      for (let i = X + 8; i < X + W - 8; i += 6) rect(ctx, i, Y + 8, 2, 2, "#8a3e55");
+    case "rug": {
+      const [b, f, p] = d.colors ?? ["#5a2333", "#6e2d40", "#8a3e55"];
+      rect(ctx, X + 2, Y + 2, W - 4, H - 4, b);
+      rect(ctx, X + 5, Y + 5, W - 10, H - 10, f);
+      for (let i = X + 8; i < X + W - 8; i += 6) {
+        rect(ctx, i, Y + 8, 2, 2, p);
+        if (H > 40) rect(ctx, i, Y + H - 10, 2, 2, p);
+      }
       break;
+    }
     case "whiteboard":
       rect(ctx, X + 2, Y + 4, W - 4, 11, "#e9ecf3");
       rect(ctx, X + 2, Y + 14, W - 4, 1, C.metalD);
