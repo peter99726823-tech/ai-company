@@ -122,3 +122,38 @@ test("manual single-employee task: paste answer → report", () => {
   ms.submitManualAnswer(db, t.id, "## 요약\n블로그 초안입니다. 충분히 긴 답변 본문입니다.\n## 결과물\n본문");
   assert.equal(svc.getTask(db, t.id)!.status, "COMPLETED");
 });
+
+test("batch: decision follow-ups run in one answer, all-or-nothing, then a CEO synthesis", async () => {
+  const batch = await import("../src/server/tasks/batch");
+  const m = ms.createMeeting(db, { topic: "배치 테스트 회의", participantIds: ["validator", "planner", "ai-engineer"], executionMode: "manual" });
+  const ids = m.participants.map((p) => p.employeeId);
+  ms.submitManualAnswer(db, m.task!.id, ANSWER(ids));
+  const follow = [
+    { employeeId: "planner", instruction: "기획서 목차 초안" },
+    { employeeId: "ai-engineer", instruction: "백테스트 지시문" },
+  ];
+  const { created } = ms.decideMeeting(db, m.meeting.id, { option: "[A] 진행", followUps: follow, executionMode: "manual" });
+  assert.equal(created.length, 2);
+  assert.deepEqual(ms.getMeeting(db, m.meeting.id)!.followUps!.map((f) => f.id), created);
+
+  const prompt = batch.batchPrompt(db, created);
+  assert.ok(created.every((id) => prompt.includes(`=== 업무: ${id}`)) && prompt.includes("=== 종합: CEO Advisor ==="));
+  assert.ok(prompt.includes("기획서 목차 초안") && prompt.includes("이전 결과물"), "each task carries its instruction and the meeting result");
+
+  const report = (n: string) => `## 요약\n${n} 결과 요약입니다. 충분히 긴 본문입니다.\n## 결과물\n${n}-결과물\n## 다음 추천 업무\n- 해당 없음`;
+  // missing one task → nothing saved
+  assert.throws(() => batch.submitBatch(db, created, `=== 업무: ${created[0]} | 은채 ===\n${report("A")}\n=== 종합: CEO Advisor ===\n## 실행 결과 요약\n종합 내용이 충분히 깁니다. 충분히 깁니다. 충분히.`, m.meeting.id), /보고서가 답변에 없거나/);
+  assert.equal(svc.getTask(db, created[0])!.status, "QUEUED");
+
+  const text = `=== 업무: ${created[0]} | 은채 ===\n${report("A")}\n=== 업무: ${created[1]} | 준서 ===\n${report("B")}\n=== 종합: CEO Advisor ===\n## 실행 결과 요약\n- 은채: 목차\n- 준서: 지시문\n## 다음 행동\n- 오늘 제출`;
+  const r = batch.submitBatch(db, created, text, m.meeting.id);
+  assert.equal(r.reports.length, 2);
+  assert.ok(created.every((id) => svc.getTask(db, id)!.status === "COMPLETED"));
+  const synth = db.select().from(s.reports).where(eq(s.reports.id, r.synthesisReportId)).get()!;
+  assert.equal(synth.employeeId, "ceo-advisor");
+  assert.ok(synth.body.includes("오늘 제출"));
+  const d = JSON.parse(ms.getMeeting(db, m.meeting.id)!.meeting.decision!);
+  assert.equal(d.synthesisReportId, r.synthesisReportId);
+  // re-submitting finished tasks is refused
+  assert.throws(() => batch.submitBatch(db, created, text, m.meeting.id), /이미 끝났거나/);
+});

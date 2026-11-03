@@ -205,3 +205,13 @@ export function getReport(db: DB, id: string) {
   const followUps = report.taskId ? db.select().from(s.tasks).where(eq(s.tasks.parentTaskId, report.taskId)).orderBy(desc(s.tasks.createdAt)).all() : [];
   return { report, task, decisions, followUps };
 }
+
+/** A short note on a task's log (e.g. why Claude 자동 did not run). Does not change the task. */
+export function noteTask(db: DB, id: string, message: string) {
+  const t = getTask(db, id);
+  if (!t) throw new TaskInputError("업무를 찾을 수 없습니다.");
+  const text = String(message ?? "").trim().slice(0, 200);
+  if (!text) throw new TaskInputError("내용이 없습니다.");
+  recordEvent(db, { type: "TASK_PROGRESS", taskId: id, employeeId: t.employeeId, status: t.status as never, message: text });
+  return { ok: true };
+}

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { EMPLOYEE_BY_ID } from "@/domain/employees";
+import { useOffice } from "@/store/officeStore";
 import { useSample, sampleErrorText, promptBytes, MAX_PROMPT_BYTES, type SampleError } from "@/lib/claudeSample";
 
 /**
@@ -11,19 +12,31 @@ import { useSample, sampleErrorText, promptBytes, MAX_PROMPT_BYTES, type SampleE
  * - Copy/paste: copy the prompt → claude.ai → paste the answer into the big box.
  * Either way the server validates the answer; nothing is saved if it doesn't fit.
  */
+export interface BatchJob {
+  taskIds: string[];
+  /** employee id per task, in order (for the live check). */
+  employeeIds: string[];
+  meetingId?: string | null;
+}
+
 export function ManualRun({
   taskId,
+  batch,
   onDone,
   meeting,
   submitLabel,
   autoStart,
 }: {
-  taskId: string;
-  onDone: () => void;
+  /** One task… */
+  taskId?: string;
+  /** …or several follow-up tasks done in one answer. */
+  batch?: BatchJob;
+  onDone: (result?: { synthesisReportId?: string }) => void;
   meeting?: boolean;
   submitLabel?: string;
   autoStart?: boolean;
 }) {
+  const key = taskId ?? `batch-${batch?.taskIds.join("-")}`;
   const [prompt, setPrompt] = useState<string>("");
   const [answer, setAnswer] = useState("");
   const [copied, setCopied] = useState<"ok" | "manual" | null>(null);
@@ -38,12 +51,17 @@ export function ManualRun({
   const sample = useSample();
   const minLen = submitLabel ? 1 : 40;
 
+  const batchKey = batch?.taskIds.join(",");
   useEffect(() => {
-    fetch(`/api/tasks/${taskId}/prompt`)
+    const req = batch
+      ? fetch("/api/batch/prompt", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ taskIds: batch.taskIds }) })
+      : fetch(`/api/tasks/${taskId}/prompt`);
+    req
       .then((r) => r.json())
       .then((j) => (j.prompt ? setPrompt(j.prompt) : setErr(j.error)))
       .catch((e) => setErr((e as Error).message));
-  }, [taskId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [taskId, batchKey]);
 
   useEffect(() => {
     if (!running) return;
@@ -55,18 +73,24 @@ export function ManualRun({
   // Meeting answers: show which departments the pasted text already contains.
   const participants = useMemo(() => (/PARTICIPANTS: ([a-z,-]+)/.exec(prompt)?.[1] ?? "").split(",").filter(Boolean), [prompt]);
   const check = useMemo(() => {
+    if (batch) {
+      const found = batch.taskIds.map((id, i) => ({ id: batch.employeeIds[i], ok: new RegExp(`^===\\s*업무:\\s*${id}\\b`, "m").test(answer) }));
+      return { found, summary: /^===\s*종합/m.test(answer), complete: found.every((f) => f.ok) && /^===\s*종합/m.test(answer) };
+    }
     if (!meeting || !participants.length) return null;
     const found = participants.map((id) => ({ id, ok: new RegExp(`^===\\s*부서:\\s*${id}\\b`, "m").test(answer) }));
     return { found, summary: /^===\s*종합/m.test(answer), complete: found.every((f) => f.ok) && /^===\s*종합/m.test(answer) };
-  }, [meeting, participants, answer]);
+  }, [meeting, participants, answer, batch]);
 
   const tooBig = !!prompt && promptBytes(prompt) > MAX_PROMPT_BYTES;
   const canAuto = typeof sample === "function" && !!prompt && !tooBig;
 
-  async function submitText(text: string) {
+  async function submitText(text: string, via: "manual" | "claude" = "manual") {
     setBusy(true);
     setErr(null);
-    const r = await fetch(`/api/tasks/${taskId}/submit`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text }) });
+    const r = batch
+      ? await fetch("/api/batch/submit", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ taskIds: batch.taskIds, meetingId: batch.meetingId ?? null, text, via }) })
+      : await fetch(`/api/tasks/${taskId}/submit`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text, via }) });
     const j = await r.json().catch(() => ({}));
     setBusy(false);
     if (!r.ok) {
@@ -74,7 +98,7 @@ export function ManualRun({
       return false;
     }
     setAnswer("");
-    onDone();
+    onDone(j);
     return true;
   }
 
@@ -91,12 +115,17 @@ export function ManualRun({
       setRunning(null);
       setAnswer(res.text);
       if (res.truncated) setAutoErr("답이 길이 한도에서 끊겼습니다. 저장을 시도합니다. 실패하면 다시 누르세요.");
-      await submitText(res.text);
+      await submitText(res.text, "claude");
     } catch (e) {
       setRunning(null);
       const se = e as SampleError;
       if (se.text) setAnswer(se.text);
-      if (se.code !== "cancelled") setAutoErr(sampleErrorText(se));
+      if (se.code !== "cancelled") {
+        setAutoErr(sampleErrorText(se));
+        const logId = taskId ?? batch?.taskIds[0];
+        if (logId)
+          void fetch(`/api/tasks/${logId}/note`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message: `Claude 자동 실패: ${se.code}` }) }).catch(() => {});
+      }
     }
   }
 
@@ -114,7 +143,7 @@ export function ManualRun({
       await navigator.clipboard.writeText(prompt);
       setCopied("ok");
     } catch {
-      const el = document.getElementById(`prompt-${taskId}`) as HTMLTextAreaElement | null;
+      const el = document.getElementById(`prompt-${key}`) as HTMLTextAreaElement | null;
       if (el) {
         (el.closest("details") as HTMLDetailsElement | null)?.setAttribute("open", "");
         el.select();
@@ -138,7 +167,7 @@ export function ManualRun({
     }
   }
 
-  const label = submitLabel ?? (meeting ? "회의록 제출" : "보고서 제출");
+  const label = submitLabel ?? (batch ? "결과 한 번에 저장" : meeting ? "회의록 제출" : "보고서 제출");
 
   return (
     <div className="space-y-3 text-[13px]" data-testid="manual-run">
@@ -146,7 +175,7 @@ export function ManualRun({
         <section className="rounded-sm border-2 border-hi bg-hi/10 p-3" data-testid="auto-run">
           <div className="pixel text-[13px] font-bold text-hi">⚡ Claude 자동 진행 (API 키 없이)</div>
           <p className="mt-1 text-[12px] text-muted">
-            {meeting ? "부서별 의견과 종합을 Claude가 바로 작성하고 저장합니다." : "Claude가 바로 답을 작성하고 저장합니다."} 지금 로그인한 claude.ai 계정의 사용량을 씁니다(API 비용 없음). 처음 한 번은 허용 창이 뜹니다.
+            {batch ? `후속 업무 ${batch.taskIds.length}건을 담당 직원별로 한 번에 처리하고, 한결이 결과를 종합합니다.` : meeting ? "부서별 의견과 종합을 Claude가 바로 작성하고 저장합니다." : "Claude가 바로 답을 작성하고 저장합니다."} 지금 로그인한 claude.ai 계정의 사용량을 씁니다(API 비용 없음). 처음 한 번은 허용 창이 뜹니다.
           </p>
           {running ? (
             <div className="mt-2 flex items-center gap-2">
@@ -159,11 +188,18 @@ export function ManualRun({
             </div>
           ) : (
             <button type="button" onClick={runAuto} disabled={!canAuto || busy} className="pixel mt-2 w-full rounded-sm bg-hi py-2 text-[14px] font-bold text-void disabled:opacity-40">
-              {busy ? "저장 중…" : answer && autoErr ? "다시 맡기기" : meeting ? "Claude에게 회의 맡기기" : "Claude에게 맡기기"}
+              {busy ? "저장 중…" : answer && autoErr ? "다시 맡기기" : batch ? `Claude에게 ${batch.taskIds.length}건 한 번에 맡기기` : meeting ? "Claude에게 회의 맡기기" : "Claude에게 맡기기"}
             </button>
           )}
           {tooBig && <p className="mt-1 text-[12px] text-warn">지시문이 자동 진행 한도(256KB)를 넘습니다. 첨부를 줄이거나 아래 붙여넣기 방식을 쓰세요.</p>}
-          {autoErr && <p className="mt-1 rounded-sm bg-bad/10 p-2 text-[12px] text-bad">{autoErr}</p>}
+          {autoErr && (
+            <p className="mt-1 rounded-sm bg-bad/10 p-2 text-[12px] text-bad">
+              {autoErr}{" "}
+              <button type="button" className="underline" onClick={() => useOffice.getState().setPanel("settings")}>
+                연결 확인하기
+              </button>
+            </p>
+          )}
           <p className="mt-2 text-[11px] text-muted">또는 아래처럼 직접 복사·붙여넣기 할 수 있습니다.</p>
         </section>
       )}
@@ -189,7 +225,7 @@ export function ManualRun({
           <summary className="cursor-pointer text-[11px] text-muted">
             지시문 내용 보기 ({prompt.length.toLocaleString()}자 · {meeting ? "참석 부서와 진행 규칙 포함" : "직원 역할과 프로젝트 정보 포함"})
           </summary>
-          <textarea id={`prompt-${taskId}`} readOnly value={prompt} rows={5} className="mt-1 w-full resize-y rounded-sm border border-line bg-void p-2 font-mono text-[11px] text-muted" />
+          <textarea id={`prompt-${key}`} readOnly value={prompt} rows={5} className="mt-1 w-full resize-y rounded-sm border border-line bg-void p-2 font-mono text-[11px] text-muted" />
         </details>
       </section>
 
@@ -204,7 +240,7 @@ export function ManualRun({
         {pasteNote && <p className="mb-1 text-[12px] text-warn">{pasteNote}</p>}
         <textarea
           ref={answerRef}
-          id={`answer-${taskId}`}
+          id={`answer-${key}`}
           value={answer}
           onChange={(e) => setAnswer(e.target.value)}
           readOnly={!!running}

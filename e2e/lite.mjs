@@ -51,7 +51,7 @@ try {
   await room.getByRole("radio").first().check();
   await room.getByRole("checkbox").first().check();
   await room.getByRole("button", { name: "결정 기록" }).click();
-  await room.getByText("후속 업무 1건").waitFor();
+  await room.getByText("후속 업무 1건을 등록").waitFor();
   check("결정 → 후속 업무 등록", true);
   await room.getByRole("button", { name: "닫기" }).click();
   await page.waitForFunction(() => document.querySelector("[data-testid=save-state]")?.textContent?.includes("저장됨"), null, { timeout: 10000 });

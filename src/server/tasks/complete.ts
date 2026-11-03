@@ -135,7 +135,7 @@ export function finalizeTask(
   db: DB,
   task: Task,
   text: string,
-  opts: { from: TaskStatus[]; leaseOwner?: string; sources?: { title: string; url: string }[]; truncated?: boolean; via: "api" | "manual"; usageNote?: string },
+  opts: { from: TaskStatus[]; leaseOwner?: string; sources?: { title: string; url: string }[]; truncated?: boolean; via: "api" | "manual" | "claude"; usageNote?: string },
 ): string {
   if (task.type === "CHAT" && task.conversationId) {
     const msgId = `msg_${randomUUID().slice(0, 8)}`;
@@ -145,7 +145,7 @@ export function finalizeTask(
         from: opts.from,
         leaseOwner: opts.leaseOwner,
         patch: { status: "COMPLETED", progress: 100, finishedAt: Date.now(), statusMessage: "답변 완료", leaseOwner: null, leaseUntil: null },
-        event: { type: "TASK_COMPLETED", message: `대화 답변${opts.via === "manual" ? " (claude.ai 붙여넣기)" : ""}${opts.usageNote ? ` · ${opts.usageNote}` : ""}`, data: { messageId: msgId, conversationId: task.conversationId } },
+        event: { type: "TASK_COMPLETED", message: `대화 답변${opts.via === "manual" ? " (claude.ai 붙여넣기)" : opts.via === "claude" ? " (Claude 자동)" : ""}${opts.usageNote ? ` · ${opts.usageNote}` : ""}`, data: { messageId: msgId, conversationId: task.conversationId } },
       });
       if (!moved) throw new TaskInputError("업무 상태가 바뀌어 저장하지 않았습니다 (이미 끝났거나 취소됨).");
     });
@@ -156,7 +156,12 @@ export function finalizeTask(
   const parsedMeeting = meeting ? parseMeeting(text, participants.map((p) => p.employeeId)) : null;
   const parsed = parseReport(parsedMeeting ? parsedMeeting.summary : text);
   const reportId = `rep_${randomUUID().slice(0, 8)}`;
-  const viaNote = opts.via === "manual" ? "\n\n> 이 결과는 대표가 claude.ai에서 받은 답변을 붙여넣어 저장한 것입니다." : "";
+  const viaNote =
+    opts.via === "manual"
+      ? "\n\n> 이 결과는 대표가 claude.ai에서 받은 답변을 붙여넣어 저장한 것입니다."
+      : opts.via === "claude"
+        ? "\n\n> 이 결과는 링크 버전의 Claude 자동(대표의 claude.ai 계정)으로 작성해 저장한 것입니다."
+        : "";
   const body = (opts.truncated ? `${text}\n\n> ⚠️ 응답이 출력 길이 한도에 걸려 여기서 잘렸습니다.` : text) + viaNote;
 
   db.transaction((tx) => {
@@ -195,7 +200,7 @@ export function finalizeTask(
       },
       event: {
         type: "TASK_COMPLETED",
-        message: `${meeting ? "회의록" : "보고서"} 제출 완료${opts.via === "manual" ? " (claude.ai 답변 붙여넣기)" : ""}${opts.truncated ? " · 일부 잘림" : ""}${opts.usageNote ? ` · ${opts.usageNote}` : ""}`,
+        message: `${meeting ? "회의록" : "보고서"} 제출 완료${opts.via === "manual" ? " (claude.ai 답변 붙여넣기)" : opts.via === "claude" ? " (Claude 자동)" : ""}${opts.truncated ? " · 일부 잘림" : ""}${opts.usageNote ? ` · ${opts.usageNote}` : ""}`,
         data: { reportId, meetingId: meeting?.id ?? null },
       },
     });

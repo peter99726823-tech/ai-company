@@ -116,7 +116,8 @@ try {
   const room2 = page.getByRole("dialog", { name: "회의실" });
   await room2.locator("[data-testid=decision]").waitFor();
   await room2.getByRole("radio").first().check();
-  await room2.getByRole("checkbox").first().check();
+  check("후속 업무는 기본으로 모두 체크", (await room2.getByRole("checkbox").count()) === 2 && (await room2.getByRole("checkbox").nth(1).isChecked()));
+  await room2.getByRole("checkbox").nth(1).uncheck(); // keep only 도윤's
   await room2.getByRole("button", { name: "결정 기록" }).click();
   await room2.getByText("후속 업무 1건을 등록했습니다").waitFor({ timeout: 10000 });
   const office = await (await fetch(`${BASE}/api/office`)).json();

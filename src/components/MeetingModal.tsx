@@ -7,6 +7,8 @@ import { EMPLOYEE_BY_ID } from "@/domain/employees";
 import { TASK_STATUS_LABEL, type TaskStatus } from "@/domain/types";
 import { portraitDataUrl } from "@/game/sprites/characterArt";
 import { ManualRun } from "./ManualRun";
+import { ExportButtons } from "./ExportButtons";
+import { useSample } from "@/lib/claudeSample";
 import type { Health } from "@/hooks/useOfficeData";
 
 interface MeetingData {
@@ -14,6 +16,7 @@ interface MeetingData {
   participants: { employeeId: string; order: number; statement: string | null }[];
   task: { id: string; status: string; executionMode: string; statusMessage: string | null; error: string | null; progress: number } | null;
   report: { id: string; body: string; nextTasks: string | null } | null;
+  followUps?: { id: string; employeeId: string; title: string; status: string; executionMode: string; reportId: string | null }[];
 }
 
 
@@ -45,7 +48,9 @@ export function MeetingModal({ health, reload }: { health: Health | null; reload
   const [option, setOption] = useState("");
   const [note, setNote] = useState("");
   const [follow, setFollow] = useState<Record<number, boolean>>({});
-  const [followMode, setFollowMode] = useState<"manual" | "api">("manual");
+  const [followMode, setFollowMode] = useState<"batch" | "manual" | "api">("batch");
+  const [autoBatch, setAutoBatch] = useState(false);
+  const sample = useSample();
   const [decideMsg, setDecideMsg] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -63,6 +68,7 @@ export function MeetingModal({ health, reload }: { health: Health | null; reload
     setNote("");
     setFollow({});
     setDecideMsg(null);
+    setAutoBatch(false);
     void load();
   }, [id, load]);
   useEffect(() => {
@@ -78,14 +84,14 @@ export function MeetingModal({ health, reload }: { health: Health | null; reload
   const done = d?.meeting.status === "COMPLETED";
   const followUps = d?.report?.nextTasks ? (JSON.parse(d.report.nextTasks) as { employeeId: string; instruction: string }[]) : [];
   const options = d?.report ? parseOptions(d.report.body) : [];
-  const decision = d?.meeting.decision ? (JSON.parse(d.meeting.decision) as { option: string; note: string }) : null;
+  const decision = d?.meeting.decision ? (JSON.parse(d.meeting.decision) as Decision) : null;
   const apiReady = !!health?.worker.running && !!health?.ai.keyConfigured;
 
   async function decide() {
     const r = await fetch(`/api/meetings/${id}/decide`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ option, note, followUps: followUps.filter((_, i) => follow[i]), executionMode: followMode }),
+      body: JSON.stringify({ option, note, followUps: followUps.filter((_, i) => follow[i] ?? true), executionMode: followMode === "api" ? "api" : "manual" }),
     });
     const j = await r.json();
     if (!r.ok) {
@@ -93,6 +99,7 @@ export function MeetingModal({ health, reload }: { health: Health | null; reload
       return;
     }
     setDecideMsg(`결정을 기록했습니다.${j.created.length ? ` 후속 업무 ${j.created.length}건을 등록했습니다.` : ""}`);
+    if (j.created.length && followMode === "batch" && typeof sample === "function") setAutoBatch(true);
     reload();
     void load();
   }
@@ -180,17 +187,23 @@ export function MeetingModal({ health, reload }: { health: Health | null; reload
                 })}
               </section>
               <section className="rounded-sm border-2 border-hi/50 p-3">
-                <div className="pixel text-[13px] text-hi">CEO Advisor 종합</div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="pixel flex-1 text-[13px] text-hi">CEO Advisor 종합</div>
+                  <ExportButtons title={topicTitle(d.meeting.topic)} markdown={() => minutesMarkdown(d)} />
+                </div>
                 <div className="report text-[13px]" dangerouslySetInnerHTML={{ __html: md(d.report?.body ?? "") }} />
               </section>
 
               <section className="rounded-sm border border-line bg-panel-2 p-3" data-testid="decision">
                 <div className="pixel mb-2 text-[13px]">대표 결정</div>
                 {decision ? (
-                  <p className="text-[13px]">
-                    결정함: <b>{decision.option}</b>
-                    {decision.note && ` — ${decision.note}`}
-                  </p>
+                  <div className="space-y-2">
+                    <p className="text-[13px]">
+                      결정함: <b>{decision.option}</b>
+                      {decision.note && ` — ${decision.note}`}
+                    </p>
+                    <FollowUpRun d={d} decision={decision} autoStart={autoBatch} onDone={() => (setAutoBatch(false), reload(), void load())} />
+                  </div>
                 ) : (
                   <div className="space-y-2 text-[13px]">
                     {options.length ? (
@@ -211,14 +224,15 @@ export function MeetingModal({ health, reload }: { health: Health | null; reload
                         <div className="pixel mb-1 text-[12px] text-muted">후속 업무로 등록할 항목</div>
                         {followUps.map((f, i) => (
                           <label key={i} className="flex items-start gap-2">
-                            <input type="checkbox" checked={!!follow[i]} onChange={(e) => setFollow({ ...follow, [i]: e.target.checked })} className="mt-1" />
+                            <input type="checkbox" checked={follow[i] ?? true} onChange={(e) => setFollow({ ...follow, [i]: e.target.checked })} className="mt-1" />
                             <span>
                               <b className="pixel">{EMPLOYEE_BY_ID[f.employeeId]?.name}</b> {f.instruction}
                             </span>
                           </label>
                         ))}
-                        <select value={followMode} onChange={(e) => setFollowMode(e.target.value as "manual" | "api")} className="mt-1 rounded-sm border-2 border-line bg-panel px-2 py-1 text-[12px]">
-                          <option value="manual">후속 업무: 복사·붙여넣기 (무료)</option>
+                        <select value={followMode} onChange={(e) => setFollowMode(e.target.value as "batch" | "manual" | "api")} className="mt-1 w-full rounded-sm border-2 border-line bg-panel px-2 py-1 text-[12px]" aria-label="후속 업무 진행 방식">
+                          <option value="batch">{typeof sample === "function" ? "후속 업무: ⚡ Claude가 한 번에 실행 + 한결 종합 (추천)" : "후속 업무: 한 번에 실행 (붙여넣기 1번) + 한결 종합 (추천)"}</option>
+                          <option value="manual">후속 업무: 하나씩 따로 (붙여넣기)</option>
                           <option value="api" disabled={!apiReady}>
                             후속 업무: API 자동{apiReady ? "" : " (실행기·키 필요)"}
                           </option>
@@ -236,6 +250,80 @@ export function MeetingModal({ health, reload }: { health: Health | null; reload
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+type Decision = { option: string; note: string; followUpTaskIds?: string[]; synthesisReportId?: string };
+
+/** The whole meeting as one Markdown document (for copy / download). */
+function minutesMarkdown(d: MeetingData): string {
+  const decision = d.meeting.decision ? (JSON.parse(d.meeting.decision) as Decision) : null;
+  const when = new Date(d.meeting.endedAt ?? d.meeting.createdAt).toLocaleString("ko-KR");
+  const parts = [
+    `# 회의록: ${topicTitle(d.meeting.topic)}`,
+    `- 일시: ${when}`,
+    `- 참석: ${d.participants.map((p) => `${EMPLOYEE_BY_ID[p.employeeId]?.name}(${EMPLOYEE_BY_ID[p.employeeId]?.title})`).join(", ")}`,
+    decision ? `- 대표 결정: ${decision.option}${decision.note ? ` — ${decision.note}` : ""}` : "- 대표 결정: 대기",
+    "",
+    "## 안건",
+    d.meeting.topic.trim(),
+    "",
+    "## 부서별 의견",
+    ...d.participants.map((p) => `### ${EMPLOYEE_BY_ID[p.employeeId]?.name} · ${EMPLOYEE_BY_ID[p.employeeId]?.title}\n\n${(p.statement ?? "").trim()}\n`),
+    "## CEO Advisor 종합",
+    (d.report?.body ?? "").trim(),
+  ];
+  return parts.join("\n");
+}
+
+const showReport = (id: string) => {
+  useOffice.getState().openMeeting(null);
+  useOffice.getState().openReport(id);
+};
+
+/** After the decision: run every follow-up in one go (Claude or one paste), then show the synthesis. */
+function FollowUpRun({ d, decision, autoStart, onDone }: { d: MeetingData; decision: Decision; autoStart: boolean; onDone: () => void }) {
+  const list = d.followUps ?? [];
+  if (!list.length) return null;
+  const pending = list.filter((f) => f.status === "QUEUED" && f.executionMode === "manual");
+  return (
+    <div className="space-y-2 rounded-sm border border-line bg-panel p-2" data-testid="follow-ups">
+      <div className="pixel text-[12px] text-muted">후속 업무 {list.length}건</div>
+      <ul className="space-y-0.5 text-[12px]">
+        {list.map((f) => (
+          <li key={f.id} className="flex items-center gap-2">
+            <span className={f.status === "COMPLETED" ? "text-ok" : f.status === "QUEUED" ? "text-hi" : "text-muted"}>{f.status === "COMPLETED" ? "✓" : f.status === "QUEUED" ? "…" : "·"}</span>
+            <b className="pixel shrink-0">{EMPLOYEE_BY_ID[f.employeeId]?.name}</b>
+            <span className="min-w-0 flex-1 truncate">{f.title}</span>
+            {f.reportId && (
+              <button type="button" onClick={() => showReport(f.reportId!)} className="pixel shrink-0 text-[11px] text-info underline">
+                보고서
+              </button>
+            )}
+          </li>
+        ))}
+      </ul>
+      {decision.synthesisReportId && (
+        <button
+          type="button"
+          onClick={() => showReport(decision.synthesisReportId!)}
+          className="pixel w-full rounded-sm bg-ok py-1.5 text-[13px] font-bold text-void"
+          data-testid="open-synthesis"
+        >
+          📄 실행 결과 종합 보기 (복사·파일 저장)
+        </button>
+      )}
+      {pending.length > 0 && (
+        <ManualRun
+          batch={{ taskIds: pending.map((f) => f.id), employeeIds: pending.map((f) => f.employeeId), meetingId: d.meeting.id }}
+          autoStart={autoStart}
+          onDone={(r) => {
+            onDone();
+            if (r?.synthesisReportId) showReport(r.synthesisReportId);
+          }}
+        />
+      )}
     </div>
   );
 }

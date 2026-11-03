@@ -1,6 +1,7 @@
 "use client";
 
 import { md } from "@/lib/markdown";
+import { ExportButtons } from "./ExportButtons";
 import { useEffect, useState } from "react";
 import { useOffice } from "@/store/officeStore";
 import { EMPLOYEE_BY_ID } from "@/domain/employees";
@@ -59,6 +60,11 @@ export function ReportModal({ data: office, health, reload }: { data?: OfficeSna
             {data && (
               <div className="mt-1 text-[12px] text-muted">
                 {new Date(data.report.createdAt).toLocaleString("ko-KR")} · 업무 ID {data.task?.id}
+              </div>
+            )}
+            {data && (
+              <div className="mt-1.5">
+                <ExportButtons title={data.report.title} markdown={() => `# ${data.report.title}\n\n- 작성: ${emp?.name ?? ""} (${emp?.title ?? ""})\n- 작성일: ${new Date(data.report.createdAt).toLocaleString("ko-KR")}\n\n${data.report.body}`} />
               </div>
             )}
           </div>

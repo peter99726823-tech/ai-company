@@ -75,11 +75,16 @@ export function TopBar({ data, health, live }: { data: OfficeSnapshot | null; he
         <Stat label="실행 중" value={data?.counts.running} tone="text-ok" />
         <Stat label="대기" value={data?.counts.queued} tone="text-info" />
         <Stat label="승인 대기" value={data?.counts.waitingApproval} tone="text-hi" />
-        <span className="pixel flex shrink-0 items-center gap-1.5 rounded-sm border border-line bg-panel-2 px-1.5 py-0.5" title={ai?.message ?? ""}>
+        <button
+          type="button"
+          onClick={() => useOffice.getState().setPanel("settings")}
+          className="pixel flex shrink-0 items-center gap-1.5 rounded-sm border border-line bg-panel-2 px-1.5 py-0.5 hover:border-hi"
+          title={health?.lite ? "눌러서 Claude 자동 연결 확인" : (ai?.message ?? "")}
+        >
           <i className={`inline-block h-2 w-2 rounded-full ${aiState.color}`} />
           AI {aiState.label}
           {ai?.model && !health?.lite && <span className="text-muted">· {ai.model}</span>}
-        </span>
+        </button>
         <span className="pixel flex shrink-0 items-center gap-1.5 rounded-sm border border-line bg-panel-2 px-1.5 py-0.5" title="서버 업무 이벤트 스트림 연결 상태">
           <i className={`inline-block h-2 w-2 rounded-full ${liveLabel.c}`} />
           {liveLabel.t}

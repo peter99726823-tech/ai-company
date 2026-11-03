@@ -24,6 +24,7 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.135.0",
     "better-sqlite3": "^13.0.3",
+    "docx": "^9.5.1",
     "dompurify": "^3.4.17",
     "drizzle-orm": "^0.45.4",
     "galmuri": "^2.40.3",

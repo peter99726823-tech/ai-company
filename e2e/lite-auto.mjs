@@ -24,6 +24,15 @@ const fake = (mode) => `
   const sample = async (input, opts = {}) => {
     window.__sampleCalls++;
     if (${JSON.stringify(mode)} === "deny") throw { code: "not_granted", message: "denied" };
+    window.__lastPrompt = input;
+    if (/^=== 업무:/m.test(input)) {
+      const tids = [...new Set([...input.matchAll(/^=== 업무: (task_[\\w-]+)/gm)].map((m) => m[1]))];
+      const out = tids.map((t) => "=== 업무: " + t + " | x ===\\n## 요약\\n[테스트 문구] " + t + " 결과 요약입니다. 충분히 깁니다.\\n## 결과물\\n| 항목 | 값 |\\n|---|---|\\n| 목차 | 1~2장 |\\n## 다음 추천 업무\\n- 해당 없음").join("\\n\\n") +
+        "\\n\\n=== 종합: CEO Advisor ===\\n## 실행 결과 요약\\n- [테스트 문구] 모두 끝났습니다. 충분히 긴 종합입니다.\\n## 다음 행동\\n- **오늘** 제출";
+      opts.onText && opts.onText({ text: out, delta: out });
+      return { text: out, truncated: false };
+    }
+    if (/연결 확인/.test(input)) return { text: "확인", truncated: false };
     const ids = /PARTICIPANTS: ([a-z,-]+)/.exec(input)[1].split(",");
     const full = ids.map((id) => "=== 부서: " + id + " | x ===\\n[테스트 문구] " + id + " 의견입니다. 근거와 대안.").join("\\n\\n") +
       "\\n\\n=== 종합: CEO Advisor ===\\n## 회의 요약\\n[테스트 문구] 자동 종합입니다. 충분히 깁니다.\\n## 대표 결정 선택지\\n- [A] 진행\\n- [B] 보류\\n## 후속 업무 제안\\n- 담당: cto | 업무: 범위 정리\\n";
@@ -37,7 +46,8 @@ const fake = (mode) => `
   window.claude = { use: async (n) => (n === "sample" ? sample : null) };
 `;
 
-const browser = await chromium.launch();
+// UTF-8 locale so Korean download names survive in headless Chromium (a test-machine setting, not the app)
+const browser = await chromium.launch({ env: { ...process.env, LANG: "C.UTF-8", LC_ALL: "C.UTF-8" } });
 try {
   // ── auto meeting ──
   const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
@@ -61,8 +71,38 @@ try {
   });
   check("붙여넣기 없이 부서별 발언 저장", (await room.locator("[data-testid=statements] article").count()) === 5);
   check("Claude 호출은 한 번", (await page.evaluate(() => window.__sampleCalls)) === 1);
+  check("회의록 복사·파일 저장 버튼", await room.getByTestId("export").first().isVisible());
   check("결정 선택지 표시", (await room.getByRole("radio").count()) === 2);
-  await room.getByRole("button", { name: "닫기" }).click();
+  // decide → follow-ups run in one Claude call → synthesis report opens
+  await room.getByRole("radio").first().check();
+  check("후속 업무 기본: Claude가 한 번에", (await room.getByRole("combobox", { name: "후속 업무 진행 방식" }).inputValue()) === "batch");
+  const callsBefore = await page.evaluate(() => window.__sampleCalls);
+  await room.getByRole("button", { name: "결정 기록" }).click();
+  const rep = page.getByRole("dialog", { name: "결과 보고서" });
+  await rep.waitFor({ timeout: 20000 });
+  check("결정 → 후속 업무 Claude 1번 호출로 처리", (await page.evaluate(() => window.__sampleCalls)) === callsBefore + 1);
+  const repText = await rep.innerText();
+  check("실행 결과 종합 보고서 열림 (한결)", repText.includes("실행 결과 종합") && repText.includes("한결") && repText.includes("오늘"));
+  // export
+  const [dl1] = await Promise.all([page.waitForEvent("download"), rep.getByRole("button", { name: "⬇ Markdown" }).click()]);
+  const mdText = fs.readFileSync(await dl1.path(), "utf8");
+  check("Markdown 파일 저장", dl1.suggestedFilename().endsWith(".md") && mdText.includes("실행 결과 종합"), dl1.suggestedFilename());
+  const [dl2] = await Promise.all([page.waitForEvent("download"), rep.getByRole("button", { name: "⬇ Word" }).click()]);
+  const docx = fs.readFileSync(await dl2.path());
+  check("Word(.docx) 파일 저장", dl2.suggestedFilename().endsWith(".docx") && docx.slice(0, 2).toString() === "PK" && docx.length > 3000, `${docx.length} bytes`);
+  fs.writeFileSync(OUT + "export-test.docx", docx);
+  await rep.getByRole("button", { name: "닫기" }).click();
+  // minutes panel links the synthesis
+  await page.getByRole("button", { name: "📄 회의록" }).click();
+  check("회의록 칸에 실행 결과 종합 버튼", await page.getByRole("dialog", { name: "회의록" }).getByRole("button", { name: /실행 결과 종합/ }).isVisible());
+  await page.getByRole("dialog", { name: "회의록" }).getByRole("button", { name: "닫기" }).click();
+  // connection check in settings
+  await page.getByRole("button", { name: "설정" }).click();
+  const st = page.getByTestId("claude-status");
+  await st.getByRole("button", { name: "연결 테스트" }).click();
+  await st.getByText("정상").waitFor({ timeout: 10000 });
+  check("설정 › Claude 연결 테스트", true);
+  await page.getByRole("dialog", { name: "설정" }).getByRole("button", { name: "닫기" }).click();
 
   // ── manual paste box with live check ──
   await page.getByRole("button", { name: "회의 소집" }).click();
@@ -71,7 +111,7 @@ try {
   await dlg.getByRole("button", { name: /회의 시작/ }).click();
   await room.getByTestId("answer-box").waitFor();
   await page.waitForTimeout(400);
-  check("붙여넣기 방식은 자동 실행 안 함", (await page.evaluate(() => window.__sampleCalls)) === 1);
+  check("붙여넣기 방식은 자동 실행 안 함", (await page.evaluate(() => window.__sampleCalls)) === 3);
   const box = room.getByTestId("answer-box");
   const h = (await box.locator("textarea").boundingBox()).height;
   check("답변 칸이 큼", h >= 220, `${Math.round(h)}px`);

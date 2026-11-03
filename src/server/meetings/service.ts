@@ -63,7 +63,17 @@ export function getMeeting(db: DB, id: string) {
   const participants = meetingParticipants(db, id);
   const task = meeting.taskId ? getTask(db, meeting.taskId) : null;
   const report = meeting.summaryReportId ? (db.select().from(s.reports).where(eq(s.reports.id, meeting.summaryReportId)).get() ?? null) : null;
-  return { meeting, participants, task, report };
+  const ids = meeting.decision ? ((JSON.parse(meeting.decision) as { followUpTaskIds?: string[] }).followUpTaskIds ?? []) : [];
+  const followUps = ids.length
+    ? db
+        .select({ id: s.tasks.id, employeeId: s.tasks.employeeId, title: s.tasks.title, status: s.tasks.status, executionMode: s.tasks.executionMode })
+        .from(s.tasks)
+        .where(inArray(s.tasks.id, ids))
+        .all()
+        .sort((a, b) => ids.indexOf(a.id) - ids.indexOf(b.id))
+    : [];
+  const reportIds = followUps.length ? db.select({ id: s.reports.id, taskId: s.reports.taskId }).from(s.reports).where(inArray(s.reports.taskId, followUps.map((f) => f.id))).all() : [];
+  return { meeting, participants, task, report, followUps: followUps.map((f) => ({ ...f, reportId: reportIds.find((r) => r.taskId === f.id)?.id ?? null })) };
 }
 
 export function recentMeetings(db: DB, limit = 6) {
@@ -89,7 +99,7 @@ export function getManualPrompt(db: DB, taskId: string) {
 }
 
 /** The CEO pasted claude.ai's answer: validate, save and complete. Bad format → 400 and nothing saved. */
-export function submitManualAnswer(db: DB, taskId: string, text: string) {
+export function submitManualAnswer(db: DB, taskId: string, text: string, via: "manual" | "claude" = "manual") {
   const task = getTask(db, taskId);
   if (!task) throw new TaskInputError("업무를 찾을 수 없습니다.");
   if (task.executionMode !== "manual") throw new TaskInputError("붙여넣기 방식 업무가 아닙니다.");
@@ -99,7 +109,7 @@ export function submitManualAnswer(db: DB, taskId: string, text: string) {
   if (!answer || answer.length < min) throw new TaskInputError("붙여넣은 답변이 너무 짧습니다. claude.ai 답변 전체를 복사해 붙여넣으세요.");
   if (answer.length > 200_000) throw new TaskInputError("답변이 너무 깁니다.");
   try {
-    return finalizeTask(db, task, answer, { from: ["QUEUED"], via: "manual" });
+    return finalizeTask(db, task, answer, { from: ["QUEUED"], via });
   } catch (e) {
     if (e instanceof MeetingFormatError) throw new TaskInputError(e.message);
     throw e;
@@ -137,6 +147,12 @@ export function decideMeeting(
       source: "meeting",
     });
     created.push(t.id);
+  }
+  if (created.length) {
+    // Remember which tasks came from this decision so they can be run together and summarised.
+    const cur = db.select({ d: s.meetings.decision }).from(s.meetings).where(eq(s.meetings.id, meetingId)).get();
+    const d = cur?.d ? (JSON.parse(cur.d) as Record<string, unknown>) : {};
+    db.update(s.meetings).set({ decision: JSON.stringify({ ...d, followUpTaskIds: created }) }).where(eq(s.meetings.id, meetingId)).run();
   }
   return { created };
 }

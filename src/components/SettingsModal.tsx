@@ -6,6 +6,7 @@ import { EMPLOYEES, EMPLOYEE_BY_ID } from "@/domain/employees";
 import { TASK_TYPES } from "@/domain/taskTypes";
 import type { OfficeSnapshot } from "@/server/services/office";
 import type { Health } from "@/hooks/useOfficeData";
+import { ClaudeStatus } from "./ClaudeStatus";
 import { Modal, api, inputCls, btnCls, primaryCls } from "./Modal";
 
 const MODES = [
@@ -85,6 +86,11 @@ export function SettingsModal({ data, health, reload }: { data: OfficeSnapshot |
   return (
     <Modal label="설정" onClose={close} wide>
       {msg && <p className={`mb-3 rounded-sm p-2 text-[12px] ${msg.ok ? "bg-ok/10 text-ok" : "bg-bad/10 text-bad"}`}>{msg.t}</p>}
+      {health?.lite && (
+        <div className="mb-4">
+          <ClaudeStatus />
+        </div>
+      )}
 
       <section className="space-y-2">
         <h3 className="pixel text-[13px]">운영 모드</h3>

@@ -4,7 +4,8 @@
  */
 import { getDb } from "./client";
 import { getOfficeSnapshot } from "../src/server/services/office";
-import { createTask, getTaskDetail, requestCancel, retryTask, getReport, TaskInputError } from "../src/server/tasks/service";
+import { createTask, getTaskDetail, requestCancel, retryTask, getReport, noteTask, TaskInputError } from "../src/server/tasks/service";
+import { batchPrompt, submitBatch } from "../src/server/tasks/batch";
 import { createMeeting, getMeeting, recentMeetings, decideMeeting, getManualPrompt, submitManualAnswer, meetingMinutes } from "../src/server/meetings/service";
 import { getChat, sendChat } from "../src/server/chat/service";
 import { actOnReport, type ReportAction } from "../src/server/reports/service";
@@ -82,7 +83,10 @@ const POST: [RegExp, Handler][] = [
   ],
   [/^\/api\/tasks\/([\w-]+)\/cancel$/, (m) => conflictIf(requestCancel(getDb() as never, m[1]))],
   [/^\/api\/tasks\/([\w-]+)\/retry$/, (m) => conflictIf(retryTask(getDb() as never, m[1]))],
-  [/^\/api\/tasks\/([\w-]+)\/submit$/, (m, b) => ({ reportId: submitManualAnswer(getDb() as never, m[1], String(b.text ?? "")) })],
+  [/^\/api\/tasks\/([\w-]+)\/note$/, (m, b) => noteTask(getDb() as never, m[1], String(b.message ?? ""))],
+  [/^\/api\/batch\/prompt$/, (_m, b) => ({ prompt: batchPrompt(getDb() as never, Array.isArray(b.taskIds) ? (b.taskIds as unknown[]).map(String) : []) })],
+  [/^\/api\/batch\/submit$/, (_m, b) => submitBatch(getDb() as never, Array.isArray(b.taskIds) ? (b.taskIds as unknown[]).map(String) : [], String(b.text ?? ""), b.meetingId ? String(b.meetingId) : null, b.via === "claude" ? "claude" : "manual")],
+  [/^\/api\/tasks\/([\w-]+)\/submit$/, (m, b) => ({ reportId: submitManualAnswer(getDb() as never, m[1], String(b.text ?? ""), b.via === "claude" ? "claude" : "manual") })],
   [
     /^\/api\/meetings$/,
     (_m, b) =>

@@ -11,7 +11,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const { id } = await params;
   try {
     const b = await req.json();
-    const reportId = submitManualAnswer(getDb(), id, String(b.text ?? ""));
+    const reportId = submitManualAnswer(getDb(), id, String(b.text ?? ""), b.via === "claude" ? "claude" : "manual");
     return NextResponse.json({ reportId });
   } catch (e) {
     if (e instanceof TaskInputError) return NextResponse.json({ error: e.message }, { status: 400 });

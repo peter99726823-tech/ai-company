@@ -14,7 +14,7 @@ interface Minute {
   participants: string[];
   summary: string;
   followUps: number;
-  decision: { option: string; note?: string } | null;
+  decision: { option: string; note?: string; synthesisReportId?: string } | null;
 }
 
 
@@ -151,6 +151,15 @@ export function MinutesModal() {
                 >
                   회의록 열기 (부서별 발언 · 결정)
                 </button>
+                {cur.decision?.synthesisReportId && (
+                  <button
+                    type="button"
+                    onClick={() => (close(), useOffice.getState().openReport(cur.decision!.synthesisReportId!))}
+                    className="pixel rounded-sm bg-ok px-3 py-1.5 text-[13px] font-bold text-void"
+                  >
+                    📄 실행 결과 종합
+                  </button>
+                )}
                 {cur.followUps > 0 && <span className="text-[11px] text-muted">후속 업무 제안 {cur.followUps}건</span>}
               </div>
             </article>
