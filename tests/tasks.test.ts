@@ -43,9 +43,9 @@ after(() => {
 
 const events = (id: string) => db.select().from(s.taskEvents).where(eq(s.taskEvents.taskId, id)).all().map((e) => e.type);
 
-test("seed: nine employees each have a versioned system prompt", () => {
-  assert.equal(db.select().from(s.employees).all().length, 9);
-  assert.equal(db.select().from(s.employeePrompts).all().length, 9);
+test("seed: twelve employees each have a versioned system prompt", () => {
+  assert.equal(db.select().from(s.employees).all().length, 12);
+  assert.equal(db.select().from(s.employeePrompts).all().length, 12);
 });
 
 test("createTask stores the task as QUEUED with CREATED + ASSIGNED events", () => {
@@ -167,4 +167,21 @@ test("parseReport extracts the structured sections", () => {
   assert.equal(p.summary, "좋음");
   assert.deepEqual(p.facts, ["A"]);
   assert.deepEqual(p.nextTasks, ["B"]);
+});
+
+test("ensureEmployees: a DB created with the original nine gains the new hires once", async () => {
+  const { ensureEmployees, ensurePrompts } = await import("../src/server/db/seed-data");
+  const { inArray } = await import("drizzle-orm");
+  const added = ["planner", "ai-engineer", "frontend"];
+  db.delete(s.employeePrompts).where(inArray(s.employeePrompts.employeeId, added)).run();
+  db.delete(s.employees).where(inArray(s.employees.id, added)).run();
+  assert.equal(db.select().from(s.employees).all().length, 9);
+  ensureEmployees(db as never);
+  ensureEmployees(db as never); // idempotent
+  ensurePrompts(db as never);
+  const rows = db.select().from(s.employees).all();
+  assert.equal(rows.length, 12);
+  assert.deepEqual(rows.filter((r) => r.room === "strategy").length, 3);
+  assert.deepEqual(rows.filter((r) => r.room === "dev").length, 3);
+  assert.equal(db.select().from(s.employeePrompts).all().length, 12);
 });

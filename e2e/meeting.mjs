@@ -112,7 +112,7 @@ try {
   await page.screenshot({ path: OUT + "m-03-speaking.png" });
 
   // 7. decision → follow-up
-  await page.getByRole("button", { name: "회의록" }).first().click();
+  await page.getByRole("button", { name: "회의록", exact: true }).first().click();
   const room2 = page.getByRole("dialog", { name: "회의실" });
   await room2.locator("[data-testid=decision]").waitFor();
   await room2.getByRole("radio").first().check();
@@ -128,7 +128,7 @@ try {
   // 8. reload persists
   await page.reload();
   await page.waitForFunction(() => !!window.__officeTest, null, { timeout: 30000 });
-  await page.getByRole("button", { name: "회의록" }).first().click();
+  await page.getByRole("button", { name: "회의록", exact: true }).first().click();
   const room3 = page.getByRole("dialog", { name: "회의실" });
   await room3.locator("[data-testid=statements] article").first().waitFor();
   check("새로고침 후 회의록·결정 유지", (await room3.locator("[data-testid=decision]").innerText()).includes("결정함"));

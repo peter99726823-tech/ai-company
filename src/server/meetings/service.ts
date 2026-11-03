@@ -140,3 +140,29 @@ export function decideMeeting(
   }
   return { created };
 }
+
+/** Finished meetings for the 회의록 panel: topic, who spoke, the synthesis and the CEO's decision. */
+export function meetingMinutes(db: DB, limit = 100) {
+  const ms = db.select().from(s.meetings).where(eq(s.meetings.status, "COMPLETED")).orderBy(desc(s.meetings.endedAt)).limit(limit).all();
+  if (!ms.length) return [];
+  const parts = db.select().from(s.meetingParticipants).where(inArray(s.meetingParticipants.meetingId, ms.map((m) => m.id))).all();
+  const repIds = ms.map((m) => m.summaryReportId).filter((x): x is string => !!x);
+  const reps = repIds.length ? db.select({ id: s.reports.id, body: s.reports.body, nextTasks: s.reports.nextTasks }).from(s.reports).where(inArray(s.reports.id, repIds)).all() : [];
+  return ms.map((m) => {
+    const rep = reps.find((r) => r.id === m.summaryReportId);
+    const decision = m.decision ? (JSON.parse(m.decision) as { option: string; note?: string }) : null;
+    return {
+      id: m.id,
+      topic: m.topic,
+      createdAt: m.createdAt,
+      endedAt: m.endedAt,
+      participants: parts
+        .filter((p) => p.meetingId === m.id)
+        .sort((a, b) => a.order - b.order)
+        .map((p) => p.employeeId),
+      summary: rep?.body ?? "",
+      followUps: rep?.nextTasks ? (JSON.parse(rep.nextTasks) as unknown[]).length : 0,
+      decision,
+    };
+  });
+}

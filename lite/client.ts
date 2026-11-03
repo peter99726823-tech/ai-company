@@ -5,7 +5,7 @@
 import initSqlJs, { type Database } from "sql.js";
 import { drizzle, type SQLJsDatabase } from "drizzle-orm/sql-js";
 import * as schema from "../src/server/db/schema";
-import { seedIfEmpty, ensurePrompts } from "../src/server/db/seed-data";
+import { seedIfEmpty, ensureEmployees, ensurePrompts } from "../src/server/db/seed-data";
 import wasm from "../node_modules/sql.js/dist/sql-wasm.wasm";
 import m0 from "../drizzle/0000_init.sql";
 import m1 from "../drizzle/0001_task_cancel.sql";
@@ -31,6 +31,7 @@ export async function initDb(saved: Uint8Array | null): Promise<DB> {
   });
   db = drizzle(raw, { schema });
   seedIfEmpty(db as never);
+  ensureEmployees(db as never);
   ensurePrompts(db as never);
   return db;
 }

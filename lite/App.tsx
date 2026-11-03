@@ -15,6 +15,7 @@ import { ProjectsModal } from "@/components/ProjectsModal";
 import { FinanceModal } from "@/components/FinanceModal";
 import { SettingsModal } from "@/components/SettingsModal";
 import { IdeasModal } from "@/components/IdeasModal";
+import { MinutesModal } from "@/components/MinutesModal";
 import { useOfficeData } from "@/hooks/useOfficeData";
 import { useTaskDriver } from "@/hooks/useTaskDriver";
 import { useOffice } from "@/store/officeStore";
@@ -67,6 +68,7 @@ export function App({ storeKind }: { storeKind: "artifact" | "local" }) {
       <FinanceModal data={data} health={health} reload={reload} />
       <SettingsModal data={data} health={health} reload={reload} />
       <IdeasModal data={data} health={health} reload={reload} />
+      <MinutesModal />
     </main>
   );
 }

@@ -1,7 +1,7 @@
 import type { EmployeeProfile, ProjectSeed } from "./types";
 
 /**
- * The nine AI employees. Names and looks are original to this project.
+ * The twelve AI employees (전략기획실 3, 개발실 3). Names and looks are original to this project.
  * System prompts live in src/server/prompts (stored in the EmployeePrompt table) — PHASE 2.
  */
 export const EMPLOYEES: EmployeeProfile[] = [
@@ -103,6 +103,39 @@ export const EMPLOYEES: EmployeeProfile[] = [
     command: "/운영",
     expertise: ["일정 관리", "업무 분배", "진행 점검", "프로세스 설계", "부서 간 전달", "완료·실패 관리"],
     look: { skin: "#e9bc96", hair: "#7a4a2e", hairStyle: "curly", shirt: "#d98a2b", pants: "#2d261d", accessory: "cap", accent: "#ffb547" },
+  },
+  {
+    id: "planner",
+    name: "은채",
+    title: "Strategy Planner",
+    titleKo: "사업 기획 매니저",
+    room: "strategy",
+    deskId: "desk-strategy-3",
+    command: "/기획",
+    expertise: ["사업계획서·기획서", "공모전·지원사업 기획", "시장 진입 전략", "KPI 설계", "발표 자료 구성"],
+    look: { skin: "#f2c9a6", hair: "#3b2a24", hairStyle: "long", shirt: "#2f8f7a", pants: "#1f2b2a", accessory: "scarf", accent: "#5ed3b3" },
+  },
+  {
+    id: "ai-engineer",
+    name: "준서",
+    title: "AI Engineer",
+    titleKo: "AI 엔지니어",
+    room: "dev",
+    deskId: "desk-dev-2",
+    command: "/AI",
+    expertise: ["LLM·에이전트 설계", "프롬프트·평가 설계", "데이터 수집·전처리", "백테스트·모델 검증", "API 연동"],
+    look: { skin: "#e7b892", hair: "#15151c", hairStyle: "short", shirt: "#2b6cb0", pants: "#1b2333", accessory: "glasses", accent: "#63b3ed" },
+  },
+  {
+    id: "frontend",
+    name: "다온",
+    title: "Frontend & QA",
+    titleKo: "프론트엔드·품질 엔지니어",
+    room: "dev",
+    deskId: "desk-dev-3",
+    command: "/QA",
+    expertise: ["웹·게임 화면 구현", "반응형·접근성", "테스트 시나리오", "버그 재현·리포트", "출시 전 점검표"],
+    look: { skin: "#f5d3b5", hair: "#8a4b2f", hairStyle: "ponytail", shirt: "#c2417a", pants: "#2a1f2a", accessory: "headset", accent: "#f06ba8" },
   },
 ];
 

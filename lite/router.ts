@@ -5,7 +5,7 @@
 import { getDb } from "./client";
 import { getOfficeSnapshot } from "../src/server/services/office";
 import { createTask, getTaskDetail, requestCancel, retryTask, getReport, TaskInputError } from "../src/server/tasks/service";
-import { createMeeting, getMeeting, recentMeetings, decideMeeting, getManualPrompt, submitManualAnswer } from "../src/server/meetings/service";
+import { createMeeting, getMeeting, recentMeetings, decideMeeting, getManualPrompt, submitManualAnswer, meetingMinutes } from "../src/server/meetings/service";
 import { getChat, sendChat } from "../src/server/chat/service";
 import { actOnReport, type ReportAction } from "../src/server/reports/service";
 import { getAutonomy, setAutonomy, listRoutines, createRoutine, updateRoutine, deleteRoutine, runRoutineNow, approveProposal, rejectProposal } from "../src/server/autonomy/service";
@@ -30,6 +30,7 @@ const GET: [RegExp, Handler][] = [
   [/^\/api\/office$/, () => getOfficeSnapshot()],
   [/^\/api\/health$/, () => LITE_HEALTH],
   [/^\/api\/meetings$/, () => ({ meetings: recentMeetings(getDb() as never, 20) })],
+  [/^\/api\/meetings\/minutes$/, () => ({ minutes: meetingMinutes(getDb() as never) })],
   [/^\/api\/meetings\/([\w-]+)$/, (m) => getMeeting(getDb() as never, m[1]) ?? notFound("회의를 찾을 수 없습니다.")],
   [/^\/api\/tasks\/([\w-]+)$/, (m) => getTaskDetail(getDb() as never, m[1]) ?? notFound("업무를 찾을 수 없습니다.")],
   [/^\/api\/tasks\/([\w-]+)\/prompt$/, (m) => ({ prompt: getManualPrompt(getDb() as never, m[1]) })],

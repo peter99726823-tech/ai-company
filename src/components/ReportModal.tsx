@@ -1,8 +1,7 @@
 "use client";
 
+import { md } from "@/lib/markdown";
 import { useEffect, useState } from "react";
-import { marked } from "marked";
-import DOMPurify from "dompurify";
 import { useOffice } from "@/store/officeStore";
 import { EMPLOYEE_BY_ID } from "@/domain/employees";
 import type { ReportRow, TaskRow } from "@/server/db/schema";
@@ -48,7 +47,7 @@ export function ReportModal({ data: office, health, reload }: { data?: OfficeSna
   if (!id) return null;
   const emp = data ? EMPLOYEE_BY_ID[data.report.employeeId] : null;
   const sources = data?.report.sources ? (JSON.parse(data.report.sources) as { title: string; url: string }[]) : [];
-  const html = data ? DOMPurify.sanitize(marked.parse(data.report.body, { async: false }) as string) : "";
+  const html = data ? md(data.report.body) : "";
 
   return (
     <div className="fixed inset-0 z-40 grid place-items-center bg-black/60 p-3" onClick={close} role="dialog" aria-modal="true" aria-label="결과 보고서">

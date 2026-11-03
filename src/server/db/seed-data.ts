@@ -4,7 +4,7 @@ import * as schema from "./schema";
 import { EMPLOYEES, PROJECT_SEEDS } from "../../domain/employees";
 import { systemPromptFor } from "../ai/prompts";
 
-/** Inserts the company, the nine employees and the founder's projects — only when the DB is empty. */
+/** Inserts the company, the employees and the founder's projects — only when the DB is empty. */
 export function seedIfEmpty(db: BetterSQLite3Database<typeof schema>): boolean {
   const [{ n }] = db.select({ n: count() }).from(schema.employees).all();
   if (n > 0) return false;
@@ -29,6 +29,18 @@ export function seedIfEmpty(db: BetterSQLite3Database<typeof schema>): boolean {
     tx.insert(schema.settings).values({ key: "autonomy_mode", value: JSON.stringify("manual") }).run();
   });
   return true;
+}
+
+/** Hire employees added after a DB was created (existing records keep everything else). */
+export function ensureEmployees(db: BetterSQLite3Database<typeof schema>) {
+  const have = new Set(db.select({ id: schema.employees.id }).from(schema.employees).all().map((r) => r.id));
+  if (!have.size) return; // empty DB: seedIfEmpty handles it
+  for (const e of EMPLOYEES) {
+    if (have.has(e.id)) continue;
+    db.insert(schema.employees)
+      .values({ id: e.id, name: e.name, title: e.title, titleKo: e.titleKo, room: e.room, deskId: e.deskId, command: e.command, expertise: JSON.stringify(e.expertise), look: JSON.stringify(e.look) })
+      .run();
+  }
 }
 
 /** Version 1 system prompt for any employee that has none yet. */

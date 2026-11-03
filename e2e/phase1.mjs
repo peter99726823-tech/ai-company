@@ -31,11 +31,11 @@ await page.waitForFunction(() => !!window.__officeTest, null, { timeout: 20000 }
 await sleep(800);
 check("STEP 1 사이트 접속 · 게임 캔버스 생성", !!(await canvasBox()));
 
-// STEP 2 — office + nine employees
+// STEP 2 — office + twelve employees
 const actors = await T("actors");
-check("STEP 2 직원 캐릭터 9명 표시", actors.length === 9, actors.map((a) => a.id).join(","));
+check("STEP 2 직원 캐릭터 12명 표시", actors.length === 12, actors.map((a) => a.id).join(","));
 const rooms = await page.evaluate(() => fetch("/api/office").then((r) => r.json()));
-check("서버 DB에서 회사·직원·프로젝트 로드", rooms.employees.length === 9 && rooms.projects.length === 5, `${rooms.company.name} / 프로젝트 ${rooms.projects.length}개`);
+check("서버 DB에서 회사·직원·프로젝트 로드", rooms.employees.length === 12 && rooms.projects.length === 5, `${rooms.company.name} / 프로젝트 ${rooms.projects.length}개`);
 await page.screenshot({ path: OUT + "01-office.png" });
 
 // STEP 3 — idle animations only (no fake work)

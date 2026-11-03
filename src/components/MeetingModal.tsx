@@ -1,8 +1,7 @@
 "use client";
 
+import { md } from "@/lib/markdown";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { marked } from "marked";
-import DOMPurify from "dompurify";
 import { useOffice } from "@/store/officeStore";
 import { EMPLOYEE_BY_ID } from "@/domain/employees";
 import { TASK_STATUS_LABEL, type TaskStatus } from "@/domain/types";
@@ -17,7 +16,6 @@ interface MeetingData {
   report: { id: string; body: string; nextTasks: string | null } | null;
 }
 
-const md = (t: string) => DOMPurify.sanitize(marked.parse(t, { async: false }) as string);
 
 /** A long, Markdown agenda pasted as the topic: show its first line as the title. */
 function topicTitle(topic: string) {

@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import { toGame, type ActorCommand } from "@/game/bridge";
 import type { OfficeSnapshot } from "@/server/services/office";
+import { useOffice } from "@/store/officeStore";
 
 /**
  * Turns the server's real task state into character behaviour.
@@ -22,10 +23,13 @@ export function bubbleLine(text: string, max = 40): string {
 }
 
 /**
- * Meetings: participants sit in the meeting room while the meeting task is open.
- * After it completes, each participant's real statement is played back in speaking order.
+ * Meetings: participants sit in the meeting room while the meeting is actually being worked on —
+ * an API meeting in progress, or a paste/Claude-auto meeting whose 회의실 window is open (`focusId`).
+ * A paste meeting nobody is working on does not hold people in the room.
+ * After it completes, each participant's real statement is played back in speaking order, then
+ * everyone is released and walks back to their own desk.
  */
-export function meetingWants(meetings: OfficeSnapshot["meetings"], now: number): Record<string, Want> {
+export function meetingWants(meetings: OfficeSnapshot["meetings"], now: number, focusId: string | null = null): Record<string, Want> {
   const out: Record<string, Want> = {};
   for (const m of [...meetings].reverse()) {
     const t = m.task;
@@ -33,11 +37,12 @@ export function meetingWants(meetings: OfficeSnapshot["meetings"], now: number):
     const ids = m.participants.map((p) => p.employeeId);
     if (["QUEUED", "PLANNING", "RUNNING"].includes(t.status)) {
       const manual = t.executionMode === "manual";
+      if (manual && m.id !== focusId) continue;
       for (const id of ids) {
         const bubble =
           id === "ceo-advisor"
             ? manual
-              ? "대표님, claude.ai 답변을 붙여넣어 주세요"
+              ? "대표님, 답변을 붙여넣어 주세요"
               : t.statusMessage || "회의 진행 중..."
             : manual
               ? "회의 대기 중"
@@ -92,12 +97,13 @@ export function desiredCommand(id: string, b: OfficeSnapshot["byEmployee"][strin
 
 export function useTaskDriver(data: OfficeSnapshot | null, ready: boolean) {
   const applied = useRef<Record<string, string>>({});
+  const focusId = useOffice((s) => s.meetingId);
 
   useEffect(() => {
     if (!data || !ready) return;
     const apply = () => {
       const now = Date.now();
-      const inMeeting = meetingWants(data.meetings ?? [], now);
+      const inMeeting = meetingWants(data.meetings ?? [], now, focusId);
       for (const [id, b] of Object.entries(data.byEmployee)) {
         const want = inMeeting[id] ?? desiredCommand(id, b, now);
         const key = want ? JSON.stringify(want) : "release";
@@ -111,5 +117,5 @@ export function useTaskDriver(data: OfficeSnapshot | null, ready: boolean) {
     apply();
     const t = setInterval(apply, 1000); // advances meeting playback and ends "finished" displays
     return () => clearInterval(t);
-  }, [data, ready]);
+  }, [data, ready, focusId]);
 }

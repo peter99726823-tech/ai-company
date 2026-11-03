@@ -5,7 +5,7 @@
  * in order, each seeing what the previous ones said, followed by the CEO Advisor's synthesis.
  * The same prompt is used by the worker (API mode) and pasted into claude.ai (manual mode).
  */
-import { EMPLOYEE_BY_ID } from "@/domain/employees";
+import { EMPLOYEE_BY_ID, EMPLOYEES } from "@/domain/employees";
 import { ROLE_PROMPTS, COMPANY_RULES } from "../ai/prompts";
 
 export const DEPT_MARK = "=== 부서:";
@@ -63,7 +63,7 @@ ${SUMMARY_MARK}
 - [B] 선택지 설명
 ## 후속 업무 제안
 - 담당: 직원ID | 업무: 구체적인 지시 내용
-(직원ID는 ${m.participantIds.join(", ")} 중 하나 또는 ceo-advisor, validator, cto, pricing, sales, marketing, bookkeeper, contract, ops 중 하나)`;
+(직원ID는 ${m.participantIds.join(", ")} 중 하나 또는 ${EMPLOYEES.map((e) => e.id).join(", ")} 중 하나)`;
 }
 
 /** The single block of text the CEO pastes into claude.ai. */

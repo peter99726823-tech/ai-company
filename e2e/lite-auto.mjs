@@ -101,7 +101,7 @@ try {
     await save.click();
     const r3 = p3.getByRole("dialog", { name: "회의실" });
     await r3.locator("[data-testid=statements] article").first().waitFor({ timeout: 10000 });
-    check("붙여넣은 답변 → 회의록 9명 저장", (await r3.locator("[data-testid=statements] article").count()) === 9);
+    check("붙여넣은 답변 → 회의록 9개 부서 저장", (await r3.locator("[data-testid=statements] article").count()) === 9);
     check("결정 선택지 A·B·C 표시", (await r3.getByRole("radio").count()) === 3);
     await p3.screenshot({ path: OUT + "lite-paste-tab.png" });
     await p3.close();
@@ -124,6 +124,60 @@ try {
     check("긴 안건: 전체 보기에 표로 표시", (await r4.getByTestId("topic-full").locator("table").count()) === 1);
     await p4.screenshot({ path: OUT + "lite-long-topic.png" });
     await p4.close();
+  }
+
+  // ── 12 employees, people leave a waiting meeting when its window closes, 회의록 panel ──
+  {
+    const p5 = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+    await p5.goto("http://localhost:4457/?test=1");
+    await p5.getByText("사무실을 여는 중").waitFor({ state: "detached", timeout: 30000 });
+    await p5.waitForFunction(() => !!window.__officeTest);
+    const actors = await p5.evaluate(() => window.__officeTest.actors());
+    check("직원 12명", actors.length === 12, actors.map((a) => a.id).join(","));
+    const room = (id) => p5.evaluate((i) => { const a = window.__officeTest.actors().find((x) => x.id === i); return { x: Math.floor(a.x / 16), y: Math.floor(a.y / 16), moving: a.moving }; }, id);
+    const office = await p5.evaluate(() => fetch("/api/office").then((r) => r.json()));
+    const byRoom = (r) => office.employees.filter((e) => e.room === r).map((e) => e.name);
+    check("전략기획실 3명 · 개발실 3명", byRoom("strategy").length === 3 && byRoom("dev").length === 3, `전략 ${byRoom("strategy")} / 개발 ${byRoom("dev")}`);
+
+    // a paste meeting: participants gather while the room window is open, leave when it closes unanswered
+    await p5.getByRole("button", { name: "회의 소집" }).click();
+    await p5.fill("#meeting-topic", "복귀 테스트");
+    await p5.getByRole("dialog", { name: "회의 소집" }).getByRole("button", { name: /회의 시작/ }).click();
+    const rm = p5.getByRole("dialog", { name: "회의실" });
+    await rm.getByTestId("answer-box").waitFor();
+    const inMeeting = async () => (await Promise.all(["validator", "cto"].map(room))).filter((p) => p.y >= 21 && p.x >= 17 && p.x <= 30).length;
+    await p5.waitForFunction(() => window.__officeTest.actors().filter((a) => ["validator", "cto"].includes(a.id) && Math.floor(a.y / 16) >= 21 && Math.floor(a.x / 16) >= 17 && Math.floor(a.x / 16) <= 30 && !a.moving).length === 2, null, { timeout: 30000 }).catch(() => {});
+    check("회의실 창이 열려 있으면 참석자가 회의실에 모임", (await inMeeting()) === 2);
+    await rm.getByRole("button", { name: "닫기" }).click();
+    await p5.waitForFunction(() => window.__officeTest.actors().filter((a) => ["validator", "cto"].includes(a.id) && Math.floor(a.y / 16) < 15 && !a.moving).length === 2, null, { timeout: 30000 }).catch(() => {});
+    check("답 없이 창을 닫으면 각자 부서로 복귀", (await inMeeting()) === 0, JSON.stringify(await Promise.all(["validator", "cto"].map(room))));
+
+    // finished meeting via the paste tab → shows up in 회의록
+    await p5.getByRole("button", { name: "회의 소집" }).click();
+    const d5 = p5.getByRole("dialog", { name: "회의 소집" });
+    await d5.getByRole("tab", { name: /받은 답변 바로 붙여넣기/ }).click();
+    await p5.fill("#meeting-paste", fs.readFileSync(path.join(ROOT, "e2e/fixtures-meeting-answer.txt"), "utf8"));
+    await p5.fill("#meeting-topic", "# [회의 안건] MEMORY 모드 결정\n## 목적\n- 테스트");
+    await d5.getByRole("button", { name: "회의록으로 저장" }).click();
+    await p5.getByRole("dialog", { name: "회의실" }).locator("[data-testid=statements] article").first().waitFor({ timeout: 10000 });
+    await p5.getByRole("dialog", { name: "회의실" }).getByRole("button", { name: "닫기" }).click();
+    await p5.getByRole("button", { name: "📄 회의록" }).click();
+    const mm = p5.getByRole("dialog", { name: "회의록" });
+    await mm.getByTestId("minutes-list").waitFor({ timeout: 10000 });
+    const det = await mm.getByTestId("minutes-detail").innerText();
+    check("회의록 칸: 완료 회의 목록 + 요약·선택지", (await mm.getByTestId("minutes-list").locator("li").count()) === 1 && det.includes("MEMORY 모드 결정") && det.includes("회의 요약") && det.includes("결정 대기"));
+    await p5.screenshot({ path: OUT + "lite-minutes.png" });
+    await mm.getByRole("button", { name: /회의록 열기/ }).click();
+    const rm2 = p5.getByRole("dialog", { name: "회의실" });
+    await rm2.getByRole("radio").first().check();
+    await rm2.getByRole("button", { name: "결정 기록" }).click();
+    await rm2.getByText("결정을 기록했습니다").waitFor();
+    await rm2.getByRole("button", { name: "닫기" }).click();
+    await p5.getByRole("button", { name: "📄 회의록" }).click();
+    await p5.getByRole("dialog", { name: "회의록" }).getByText("결정 완료", { exact: false }).first().waitFor({ timeout: 10000 });
+    check("결정 후 회의록에 결정 표시", (await p5.getByRole("dialog", { name: "회의록" }).getByTestId("minutes-detail").innerText()).includes("[A]"));
+    await p5.screenshot({ path: OUT + "lite-office-12.png" });
+    await p5.close();
   }
 
   // ── denied consent ──

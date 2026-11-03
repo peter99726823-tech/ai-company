@@ -1,8 +1,7 @@
 "use client";
 
+import { md } from "@/lib/markdown";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { marked } from "marked";
-import DOMPurify from "dompurify";
 import { useOffice } from "@/store/officeStore";
 import { EMPLOYEE_BY_ID } from "@/domain/employees";
 import { portraitDataUrl } from "@/game/sprites/characterArt";
@@ -19,7 +18,6 @@ interface Chat {
   failed: { id: string; error: string | null } | null;
 }
 
-const md = (t: string) => DOMPurify.sanitize(marked.parse(t, { async: false }) as string);
 
 /** 1:1 chat with an employee, kept separately per project. */
 export function ChatModal({ data, health, reload }: { data: OfficeSnapshot | null; health: Health | null; reload: () => void }) {

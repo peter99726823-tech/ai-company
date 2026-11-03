@@ -57,6 +57,7 @@ export function TopBar({ data, health, live }: { data: OfficeSnapshot | null; he
           </button>
           {(
             [
+              ["minutes", "📄 회의록"],
               ["ideas", data?.newIdeas ? `아이디어 ${data.newIdeas}` : "아이디어"],
               ["projects", "프로젝트"],
               ["finance", "재무"],

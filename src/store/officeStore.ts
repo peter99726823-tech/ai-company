@@ -35,7 +35,7 @@ interface OfficeState {
   meetingDialog: boolean;
   manualTaskId: string | null;
   chatEmployeeId: string | null;
-  panel: null | "projects" | "finance" | "settings" | "ideas";
+  panel: null | "projects" | "finance" | "settings" | "ideas" | "minutes";
   meetingTopicDraft: string;
   /** Meeting whose answer Claude should write right away (link version, "Claude 자동"). */
   autoMeetingId: string | null;

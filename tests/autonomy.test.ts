@@ -124,7 +124,7 @@ test("backup round-trip: JSON → SQLite bytes that open with all data", () => {
   const f = path.join(dir, "restored.db");
   fs.writeFileSync(f, bytes);
   const r = new Database(f, { readonly: true });
-  assert.equal((r.prepare("select count(*) n from employees").get() as { n: number }).n, 9);
+  assert.equal((r.prepare("select count(*) n from employees").get() as { n: number }).n, 12);
   assert.equal((r.prepare("select count(*) n from financial_transactions").get() as { n: number }).n, 3);
   r.close();
   assert.throws(() => bk.fromBackupJson({ format: "other" }), /백업 파일이 아닙니다/);

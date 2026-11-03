@@ -18,6 +18,7 @@ import { ProjectsModal } from "@/components/ProjectsModal";
 import { FinanceModal } from "@/components/FinanceModal";
 import { SettingsModal } from "@/components/SettingsModal";
 import { IdeasModal } from "@/components/IdeasModal";
+import { MinutesModal } from "@/components/MinutesModal";
 
 const PhaserGame = dynamic(() => import("@/game/PhaserGame"), { ssr: false });
 
@@ -49,6 +50,7 @@ export default function Home() {
       <FinanceModal data={data} health={health} reload={reload} />
       <SettingsModal data={data} health={health} reload={reload} />
       <IdeasModal data={data} health={health} reload={reload} />
+      <MinutesModal />
     </main>
   );
 }

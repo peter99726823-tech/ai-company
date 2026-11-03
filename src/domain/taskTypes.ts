@@ -42,4 +42,7 @@ export const DEFAULT_TYPE_FOR: Record<string, string> = {
   bookkeeper: "TRANSACTIONS",
   contract: "CONTRACT",
   ops: "WORK_PLAN",
+  planner: "GENERAL",
+  "ai-engineer": "PRODUCT_PLAN",
+  frontend: "PRODUCT_PLAN",
 };

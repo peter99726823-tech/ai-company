@@ -60,7 +60,7 @@ try {
 
   await page.reload();
   await page.getByText("사무실을 여는 중").waitFor({ state: "detached", timeout: 30000 });
-  await page.getByRole("button", { name: "회의록" }).first().click();
+  await page.getByRole("button", { name: "회의록", exact: true }).first().click();
   const room2 = page.getByRole("dialog", { name: "회의실" });
   await room2.locator("[data-testid=statements] article").first().waitFor({ timeout: 10000 });
   check("새로고침 후 회의록·결정 유지", (await room2.locator("[data-testid=decision]").innerText()).includes("결정함"));
