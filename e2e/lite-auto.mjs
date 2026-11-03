@@ -83,6 +83,30 @@ try {
   await room.getByRole("button", { name: "닫기" }).click();
   await page.close();
 
+  // ── paste an answer the CEO already has, straight from the meeting dialog ──
+  {
+    const p3 = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+    await p3.goto("http://localhost:4457/");
+    await p3.getByText("사무실을 여는 중").waitFor({ state: "detached", timeout: 30000 });
+    await p3.getByRole("button", { name: "회의 소집" }).click();
+    const d3 = p3.getByRole("dialog", { name: "회의 소집" });
+    await d3.getByRole("tab", { name: /받은 답변 바로 붙여넣기/ }).click();
+    const save = d3.getByRole("button", { name: "회의록으로 저장" });
+    await p3.fill("#meeting-paste", "=== 부서: cto | 도윤 ===\n의견만 있음");
+    check("붙여넣기 탭: 종합 없으면 저장 버튼 꺼짐", await save.isDisabled());
+    const answer = fs.readFileSync(path.join(ROOT, "e2e/fixtures-meeting-answer.txt"), "utf8");
+    await p3.fill("#meeting-paste", answer);
+    check("붙여넣기 탭: 부서 9개 자동 인식", (await d3.getByTestId("paste-answer").innerText()).includes("찾은 부서 9개"));
+    await p3.fill("#meeting-topic", "Number Maze MEMORY 모드 + 보상형 광고");
+    await save.click();
+    const r3 = p3.getByRole("dialog", { name: "회의실" });
+    await r3.locator("[data-testid=statements] article").first().waitFor({ timeout: 10000 });
+    check("붙여넣은 답변 → 회의록 9명 저장", (await r3.locator("[data-testid=statements] article").count()) === 9);
+    check("결정 선택지 A·B·C 표시", (await r3.getByRole("radio").count()) === 3);
+    await p3.screenshot({ path: OUT + "lite-paste-tab.png" });
+    await p3.close();
+  }
+
   // ── denied consent ──
   const p2 = await browser.newPage({ viewport: { width: 1280, height: 800 } });
   await p2.addInitScript(fake("deny"));

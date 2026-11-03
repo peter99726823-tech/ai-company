@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, useRef } from "react";
 import { useOffice } from "@/store/officeStore";
-import { EMPLOYEES } from "@/domain/employees";
+import { EMPLOYEES, EMPLOYEE_BY_ID } from "@/domain/employees";
 import { portraitDataUrl } from "@/game/sprites/characterArt";
 import { AttachmentPicker } from "./AttachmentPicker";
 import type { Attachment } from "@/domain/attachments";
@@ -13,7 +13,15 @@ import { useSample } from "@/lib/claudeSample";
 const DEFAULT = ["ceo-advisor", "validator", "cto", "marketing", "pricing"];
 
 /** 회의 소집: topic + participants + how to run it. */
-export function MeetingDialog({ data, health, reload }: { data: OfficeSnapshot | null; health: Health | null; reload: () => void }) {
+export function MeetingDialog({
+  data,
+  health,
+  reload,
+}: {
+  data: OfficeSnapshot | null;
+  health: Health | null;
+  reload: () => void;
+}) {
   const open = useOffice((s) => s.meetingDialog);
   const setOpen = useOffice((s) => s.setMeetingDialog);
   const openMeeting = useOffice((s) => s.openMeeting);
@@ -25,10 +33,29 @@ export function MeetingDialog({ data, health, reload }: { data: OfficeSnapshot |
   const apiReady = !!health?.worker.running && !!health?.ai.keyConfigured;
   const [mode, setMode] = useState<"manual" | "api" | "claude">("manual");
   const sample = useSample();
+  const [tab, setTab] = useState<"new" | "paste">("new");
+  const [pasted, setPasted] = useState("");
+  const [retry, setRetry] = useState<{ meetingId: string; taskId: string; ids: string } | null>(null);
+  // Departments found in a pasted answer, in the order they speak.
+  const found = useMemo(() => {
+    const ids: string[] = [];
+    for (const m of pasted.matchAll(/^===\s*부서:\s*([a-z-]+)/gm))
+      if (EMPLOYEE_BY_ID[m[1]] && !ids.includes(m[1])) ids.push(m[1]);
+    return ids;
+  }, [pasted]);
+  const hasSummary = /^===\s*종합/m.test(pasted);
   const claudeReady = typeof sample === "function";
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  const portraits = useMemo(() => (typeof document === "undefined" ? {} : Object.fromEntries(EMPLOYEES.map((e) => [e.id, portraitDataUrl(e.look, 2)]))), []);
+  const portraits = useMemo(
+    () =>
+      typeof document === "undefined"
+        ? {}
+        : Object.fromEntries(
+            EMPLOYEES.map((e) => [e.id, portraitDataUrl(e.look, 2)]),
+          ),
+    [],
+  );
 
   useEffect(() => {
     if (open) {
@@ -50,12 +77,19 @@ export function MeetingDialog({ data, health, reload }: { data: OfficeSnapshot |
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
+    if (tab === "paste") return submitPasted();
     setBusy(true);
     setErr(null);
     const r = await fetch("/api/meetings", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ topic, participantIds: picked, projectId: projectId || null, executionMode: mode === "api" ? "api" : "manual", attachments }),
+      body: JSON.stringify({
+        topic,
+        participantIds: picked,
+        projectId: projectId || null,
+        executionMode: mode === "api" ? "api" : "manual",
+        attachments,
+      }),
     });
     const j = await r.json().catch(() => ({}));
     setBusy(false);
@@ -67,21 +101,138 @@ export function MeetingDialog({ data, health, reload }: { data: OfficeSnapshot |
     setTopic("");
     setAttachments([]);
     reload();
-    useOffice.setState({ autoMeetingId: mode === "claude" ? j.meeting.id : null });
+    useOffice.setState({
+      autoMeetingId: mode === "claude" ? j.meeting.id : null,
+    });
     openMeeting(j.meeting.id);
   }
 
+  /** An answer the CEO already has (e.g. from claude.ai): make the meeting from its departments and save it in one go. */
+  async function submitPasted() {
+    setBusy(true);
+    setErr(null);
+    // A failed paste keeps its meeting; fixing the text and retrying reuses it (no duplicate meetings).
+    let target = retry && retry.ids === found.join(",") ? retry : null;
+    if (!target) {
+      const r = await fetch("/api/meetings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ topic: topic.trim() || "붙여넣은 회의록", participantIds: found, projectId: projectId || null, executionMode: "manual" }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        setBusy(false);
+        setErr(j.error ?? "회의를 만들지 못했습니다.");
+        return;
+      }
+      target = { meetingId: j.meeting.id, taskId: j.task.id, ids: found.join(",") };
+    }
+    const sub = await fetch(`/api/tasks/${target.taskId}/submit`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text: pasted }) });
+    const sj = await sub.json().catch(() => ({}));
+    setBusy(false);
+    reload();
+    if (!sub.ok) {
+      setRetry(target);
+      setErr(`저장하지 못했습니다: ${sj.error ?? "형식 오류"} 답변을 고쳐 다시 누르세요.`);
+      return;
+    }
+    setRetry(null);
+    setOpen(false);
+    setTopic("");
+    setPasted("");
+    useOffice.setState({ autoMeetingId: null });
+    openMeeting(target.meetingId);
+  }
+
   return (
-    <div className="fixed inset-0 z-40 grid place-items-center bg-black/60 p-3" onClick={() => setOpen(false)} role="dialog" aria-modal="true" aria-label="회의 소집">
-      <form ref={formRef} onSubmit={submit} onClick={(e) => e.stopPropagation()} className="px-frame scroll-thin max-h-[92dvh] w-full max-w-xl space-y-3 overflow-y-auto rounded-md bg-panel p-4 text-[13px]">
+    <div
+      className="fixed inset-0 z-40 grid place-items-center bg-black/60 p-3"
+      onClick={() => setOpen(false)}
+      role="dialog"
+      aria-modal="true"
+      aria-label="회의 소집"
+    >
+      <form
+        ref={formRef}
+        onSubmit={submit}
+        onClick={(e) => e.stopPropagation()}
+        className="px-frame scroll-thin max-h-[92dvh] w-full max-w-xl space-y-3 overflow-y-auto rounded-md bg-panel p-4 text-[13px]"
+      >
         <div className="flex items-center justify-between">
           <h2 className="pixel text-[16px] font-bold">회의 소집</h2>
-          <button type="button" onClick={() => setOpen(false)} className="pixel text-muted hover:text-ink" aria-label="닫기">
+          <button
+            type="button"
+            onClick={() => setOpen(false)}
+            className="pixel text-muted hover:text-ink"
+            aria-label="닫기"
+          >
             ✕
           </button>
         </div>
+        <div className="grid grid-cols-2 gap-1" role="tablist">
+          {(
+            [
+              ["new", "새 회의 진행"],
+              ["paste", "📋 받은 답변 바로 붙여넣기"],
+            ] as const
+          ).map(([k, l]) => (
+            <button
+              key={k}
+              type="button"
+              role="tab"
+              aria-selected={tab === k}
+              onClick={() => (setTab(k), setErr(null))}
+              className={`pixel rounded-sm border-2 py-1.5 text-[12px] ${tab === k ? "border-hi bg-hi font-bold text-void" : "border-line bg-panel-2 text-muted hover:text-ink"}`}
+            >
+              {l}
+            </button>
+          ))}
+        </div>
+        {tab === "paste" && (
+          <section className="space-y-1" data-testid="paste-answer">
+            <p className="text-[12px] text-muted">
+              claude.ai나 이 대화에서 이미 받은 회의 답변(=== 부서: … 와 ===
+              종합 … 이 들어 있는 글)을 통째로 붙여넣으세요. 참석 부서는
+              답변에서 자동으로 찾습니다.
+            </p>
+            <textarea
+              id="meeting-paste"
+              value={pasted}
+              onChange={(e) => setPasted(e.target.value)}
+              placeholder="여기에 답변 전체를 붙여넣기 (Ctrl+V)"
+              className="block h-[max(220px,36vh)] w-full resize-y rounded-sm border-2 border-hi/60 bg-void p-2 text-[12px] leading-relaxed focus:border-hi focus:outline-none"
+            />
+            <div className="flex flex-wrap items-center gap-1 text-[11px]">
+              <span className="text-muted tabular-nums">
+                {pasted.length.toLocaleString()}자 · 찾은 부서 {found.length}개
+              </span>
+              {found.map((id) => (
+                <span
+                  key={id}
+                  className="pixel rounded-sm border border-ok px-1 text-ok"
+                >
+                  ✓ {EMPLOYEE_BY_ID[id].name}
+                </span>
+              ))}
+              <span
+                className={`pixel rounded-sm border px-1 ${hasSummary ? "border-ok text-ok" : "border-line text-muted"}`}
+              >
+                {hasSummary ? "✓" : "·"} 종합
+              </span>
+              {pasted.trim() && !found.includes("ceo-advisor") && (
+                <span className="text-warn">
+                  한결(ceo-advisor) 발언이 없으면 저장되지 않습니다.
+                </span>
+              )}
+            </div>
+          </section>
+        )}
         <label className="block">
-          <span className="pixel text-[12px] text-muted">회의 주제</span>
+          <span className="pixel text-[12px] text-muted">
+            {tab === "paste"
+              ? "회의 주제 (비우면 '붙여넣은 회의록')"
+              : "회의 주제"}
+          </span>
           <textarea
             id="meeting-topic"
             value={topic}
@@ -91,10 +242,21 @@ export function MeetingDialog({ data, health, reload }: { data: OfficeSnapshot |
             className="mt-1 w-full resize-y rounded-sm border-2 border-line bg-panel-2 px-2 py-1.5"
           />
         </label>
-        <AttachmentPicker value={attachments} onChange={setAttachments} dropRef={formRef} />
+        {tab === "new" && (
+          <AttachmentPicker
+            value={attachments}
+            onChange={setAttachments}
+            dropRef={formRef}
+          />
+        )}
         <label className="block">
           <span className="pixel text-[12px] text-muted">관련 프로젝트</span>
-          <select id="meeting-project" value={projectId} onChange={(e) => setProjectId(e.target.value)} className="mt-1 w-full rounded-sm border-2 border-line bg-panel-2 px-2 py-1.5">
+          <select
+            id="meeting-project"
+            value={projectId}
+            onChange={(e) => setProjectId(e.target.value)}
+            className="mt-1 w-full rounded-sm border-2 border-line bg-panel-2 px-2 py-1.5"
+          >
             <option value="">선택 안 함</option>
             {data?.projects.map((p) => (
               <option key={p.id} value={p.id}>
@@ -103,66 +265,138 @@ export function MeetingDialog({ data, health, reload }: { data: OfficeSnapshot |
             ))}
           </select>
         </label>
-        <fieldset>
-          <legend className="pixel text-[12px] text-muted">참석 부서 ({picked.length}명 · CEO Advisor는 항상 참석해 마지막에 종합)</legend>
-          <div className="mt-1 grid grid-cols-3 gap-1.5 sm:grid-cols-3">
-            {EMPLOYEES.map((e) => {
-              const on = picked.includes(e.id);
-              return (
-                <button
-                  key={e.id}
-                  type="button"
-                  onClick={() => toggle(e.id)}
-                  aria-pressed={on}
-                  data-employee={e.id}
-                  className={`flex items-center gap-1.5 rounded-sm border-2 p-1 text-left ${on ? "border-hi bg-panel-2" : "border-line opacity-60"}`}
-                >
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={portraits[e.id]} alt="" width={16} height={24} className="pixelated" />
-                  <span className="min-w-0">
-                    <span className="pixel block text-[12px]">{e.name}</span>
-                    <span className="block truncate text-[10px] text-muted">{e.title}</span>
+        {tab === "new" && (
+          <>
+            <fieldset>
+              <legend className="pixel text-[12px] text-muted">
+                참석 부서 ({picked.length}명 · CEO Advisor는 항상 참석해
+                마지막에 종합)
+              </legend>
+              <div className="mt-1 grid grid-cols-3 gap-1.5 sm:grid-cols-3">
+                {EMPLOYEES.map((e) => {
+                  const on = picked.includes(e.id);
+                  return (
+                    <button
+                      key={e.id}
+                      type="button"
+                      onClick={() => toggle(e.id)}
+                      aria-pressed={on}
+                      data-employee={e.id}
+                      className={`flex items-center gap-1.5 rounded-sm border-2 p-1 text-left ${on ? "border-hi bg-panel-2" : "border-line opacity-60"}`}
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={portraits[e.id]}
+                        alt=""
+                        width={16}
+                        height={24}
+                        className="pixelated"
+                      />
+                      <span className="min-w-0">
+                        <span className="pixel block text-[12px]">
+                          {e.name}
+                        </span>
+                        <span className="block truncate text-[10px] text-muted">
+                          {e.title}
+                        </span>
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </fieldset>
+            <fieldset className="space-y-1">
+              <legend className="pixel text-[12px] text-muted">
+                진행 방식
+              </legend>
+              {claudeReady && (
+                <label className="flex items-start gap-2 rounded-sm border-2 border-hi/70 p-2">
+                  <input
+                    type="radio"
+                    name="mode"
+                    checked={mode === "claude"}
+                    onChange={() => setMode("claude")}
+                    className="mt-1"
+                  />
+                  <span>
+                    <b className="pixel text-[12px]">
+                      ⚡ Claude 자동 (추천 · API 키 없이)
+                    </b>
+                    <span className="block text-[12px] text-muted">
+                      회의를 시작하면 Claude가 바로 부서별 의견과 종합을 작성해
+                      저장합니다. 로그인한 claude.ai 계정의 사용량을 씁니다.
+                    </span>
                   </span>
-                </button>
-              );
-            })}
-          </div>
-        </fieldset>
-        <fieldset className="space-y-1">
-          <legend className="pixel text-[12px] text-muted">진행 방식</legend>
-          {claudeReady && (
-            <label className="flex items-start gap-2 rounded-sm border-2 border-hi/70 p-2">
-              <input type="radio" name="mode" checked={mode === "claude"} onChange={() => setMode("claude")} className="mt-1" />
-              <span>
-                <b className="pixel text-[12px]">⚡ Claude 자동 (추천 · API 키 없이)</b>
-                <span className="block text-[12px] text-muted">회의를 시작하면 Claude가 바로 부서별 의견과 종합을 작성해 저장합니다. 로그인한 claude.ai 계정의 사용량을 씁니다.</span>
-              </span>
-            </label>
-          )}
-          <label className="flex items-start gap-2 rounded-sm border border-line p-2">
-            <input type="radio" name="mode" checked={mode === "manual"} onChange={() => setMode("manual")} className="mt-1" />
-            <span>
-              <b className="pixel text-[12px]">복사·붙여넣기 (무료)</b>
-              <span className="block text-[12px] text-muted">회의 지시문을 claude.ai에 붙여넣고, 받은 답을 다시 붙여넣습니다. API 비용 0원.</span>
-            </span>
-          </label>
-          <label className={`flex items-start gap-2 rounded-sm border border-line p-2 ${apiReady ? "" : "opacity-50"}`}>
-            <input type="radio" name="mode" checked={mode === "api"} onChange={() => setMode("api")} disabled={!apiReady} className="mt-1" />
-            <span>
-              <b className="pixel text-[12px]">API 자동</b>
-              <span className="block text-[12px] text-muted">
-                {apiReady ? `실행기가 ${health?.ai.model}로 바로 진행합니다. 1회 호출, 비용 발생.` : "실행기와 API 키가 있어야 쓸 수 있습니다."}
-              </span>
-            </span>
-          </label>
-        </fieldset>
-        <p className="text-[11px] leading-relaxed text-muted">
-          부서별 의견은 AI가 한 번의 응답에서 각 부서 역할로 차례대로 작성합니다. 앞 사람의 발언을 보고 이어서 말합니다. 형식에 맞지 않는 답은 저장하지 않습니다.
-        </p>
-        {err && <p className="rounded-sm bg-bad/10 p-2 text-[12px] text-bad">{err}</p>}
-        <button type="submit" disabled={busy || !topic.trim() || picked.length < 2} className="pixel w-full rounded-sm bg-hi py-2 text-[14px] font-bold text-void disabled:opacity-40">
-          {busy ? "소집 중…" : mode === "claude" ? "회의 시작 (Claude가 바로 진행)" : "회의 시작"}
-        </button>
+                </label>
+              )}
+              <label className="flex items-start gap-2 rounded-sm border border-line p-2">
+                <input
+                  type="radio"
+                  name="mode"
+                  checked={mode === "manual"}
+                  onChange={() => setMode("manual")}
+                  className="mt-1"
+                />
+                <span>
+                  <b className="pixel text-[12px]">복사·붙여넣기 (무료)</b>
+                  <span className="block text-[12px] text-muted">
+                    회의 지시문을 claude.ai에 붙여넣고, 받은 답을 다시
+                    붙여넣습니다. API 비용 0원.
+                  </span>
+                </span>
+              </label>
+              <label
+                className={`flex items-start gap-2 rounded-sm border border-line p-2 ${apiReady ? "" : "opacity-50"}`}
+              >
+                <input
+                  type="radio"
+                  name="mode"
+                  checked={mode === "api"}
+                  onChange={() => setMode("api")}
+                  disabled={!apiReady}
+                  className="mt-1"
+                />
+                <span>
+                  <b className="pixel text-[12px]">API 자동</b>
+                  <span className="block text-[12px] text-muted">
+                    {apiReady
+                      ? `실행기가 ${health?.ai.model}로 바로 진행합니다. 1회 호출, 비용 발생.`
+                      : "실행기와 API 키가 있어야 쓸 수 있습니다."}
+                  </span>
+                </span>
+              </label>
+            </fieldset>
+            <p className="text-[11px] leading-relaxed text-muted">
+              부서별 의견은 AI가 한 번의 응답에서 각 부서 역할로 차례대로
+              작성합니다. 앞 사람의 발언을 보고 이어서 말합니다. 형식에 맞지
+              않는 답은 저장하지 않습니다.
+            </p>
+          </>
+        )}
+        {err && (
+          <p className="rounded-sm bg-bad/10 p-2 text-[12px] text-bad">{err}</p>
+        )}
+        {tab === "paste" ? (
+          <button
+            type="submit"
+            disabled={busy || found.length < 2 || !hasSummary}
+            className="pixel w-full rounded-sm bg-hi py-2 text-[14px] font-bold text-void disabled:opacity-40"
+          >
+            {busy ? "저장 중…" : "회의록으로 저장"}
+          </button>
+        ) : (
+          <button
+            type="submit"
+            disabled={busy || !topic.trim() || picked.length < 2}
+            className="pixel w-full rounded-sm bg-hi py-2 text-[14px] font-bold text-void disabled:opacity-40"
+          >
+            {busy
+              ? "소집 중…"
+              : mode === "claude"
+                ? "회의 시작 (Claude가 바로 진행)"
+                : "회의 시작"}
+          </button>
+        )}
       </form>
     </div>
   );
