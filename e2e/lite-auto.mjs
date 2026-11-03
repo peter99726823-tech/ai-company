@@ -180,6 +180,29 @@ try {
     await p5.close();
   }
 
+  // ── call a whole department ──
+  {
+    const p6 = await browser.newPage({ viewport: { width: 1280, height: 860 } });
+    await p6.goto("http://localhost:4457/");
+    await p6.getByText("사무실을 여는 중").waitFor({ state: "detached", timeout: 30000 });
+    await p6.getByRole("button", { name: "회의 소집" }).click();
+    const d6 = p6.getByRole("dialog", { name: "회의 소집" });
+    await p6.screenshot({ path: OUT + "lite-dept-dialog.png" });
+    await d6.getByRole("button", { name: "개발실만 회의" }).click();
+    const sum = await d6.getByTestId("picked-summary").getAttribute("aria-label");
+    check("개발실만 → 개발실 3명 + 한결", sum === "참석 4명");
+    await d6.getByRole("button", { name: "마케팅·영업실 전체 부르기" }).click();
+    check("부서 전체 추가 → 6명", (await d6.getByTestId("picked-summary").getAttribute("aria-label")) === "참석 6명");
+    await d6.getByRole("button", { name: "마케팅·영업실 빼기" }).click();
+    await p6.fill("#meeting-topic", "개발실 회의");
+    await d6.getByRole("button", { name: /회의 시작/ }).click();
+    const r6 = p6.getByRole("dialog", { name: "회의실" });
+    await p6.waitForFunction(() => (document.querySelector("[role=dialog] textarea[readonly]")?.value ?? "").includes("PARTICIPANTS"), null, { timeout: 10000 });
+    const pr = await r6.locator("textarea[readonly]").inputValue();
+    check("부서 회의 지시문 참석자", /PARTICIPANTS: cto,ai-engineer,frontend,ceo-advisor/.test(pr), /PARTICIPANTS: .*/.exec(pr)?.[0]);
+    await p6.close();
+  }
+
   // ── denied consent ──
   const p2 = await browser.newPage({ viewport: { width: 1280, height: 800 } });
   await p2.addInitScript(fake("deny"));
