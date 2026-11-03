@@ -133,7 +133,23 @@ export function MeetingModal({ health, reload }: { health: Health | null; reload
         <div className="scroll-thin min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
           {err && <p className="text-bad">{err}</p>}
 
-          {d?.task && !done && d.task.status === "QUEUED" && d.task.executionMode === "manual" && <ManualRun taskId={d.task.id} meeting autoStart={autoStart} onDone={() => (reload(), void load())} />}
+          {d?.task && !done && d.task.status === "QUEUED" && d.task.executionMode === "manual" && (
+            <>
+              <ManualRun taskId={d.task.id} meeting autoStart={autoStart} onDone={() => (reload(), void load())} />
+              <button
+                type="button"
+                onClick={async () => {
+                  if (!confirm("이 회의를 취소할까요? 답변을 기다리는 상태가 끝나고 목록에서 빠집니다.")) return;
+                  await fetch(`/api/tasks/${d.task!.id}/cancel`, { method: "POST" });
+                  reload();
+                  void load();
+                }}
+                className="pixel text-[11px] text-muted underline hover:text-bad"
+              >
+                이 회의 취소 (중복으로 만든 회의 정리)
+              </button>
+            </>
+          )}
           {d?.task && !done && d.task.executionMode === "api" && ["QUEUED", "PLANNING", "RUNNING"].includes(d.task.status) && (
             <div className="rounded-sm border border-line bg-panel-2 p-3 text-[13px]">
               <div className="pixel text-info">{d.task.statusMessage}</div>

@@ -168,6 +168,11 @@ export function ManualRun({
         </section>
       )}
 
+      {sample === false && (
+        <p className="rounded-sm border border-line bg-panel-2 p-2 text-[11px] text-muted" data-testid="auto-unavailable">
+          이 화면에서는 Claude 자동 진행을 쓸 수 없습니다(claude.ai 밖에서 열었거나 앱이 지원하지 않음). 아래 ①~③ 순서로 진행하거나, 다른 곳에서 받은 답이 있으면 ③ 칸에 바로 붙여넣으세요.
+        </p>
+      )}
       <section className="rounded-sm border border-line bg-panel-2 p-2">
         <div className="pixel mb-1 text-[12px] text-hi">① 지시문 복사 → ② claude.ai에 붙여넣어 보내기</div>
         <div className="flex flex-wrap items-center gap-2">
