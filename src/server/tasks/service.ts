@@ -10,6 +10,7 @@ import * as s from "../db/schema";
 import type { EventType, TaskStatus } from "@/domain/types";
 import { TASK_TYPE_BY_ID } from "../ai/prompts";
 import { EMPLOYEE_BY_ID } from "@/domain/employees";
+import { cleanAttachments, type Attachment } from "@/domain/attachments";
 
 export const ACTIVE_STATUSES: TaskStatus[] = ["QUEUED", "PLANNING", "RUNNING", "WAITING_APPROVAL"];
 export const FINAL_STATUSES: TaskStatus[] = ["COMPLETED", "FAILED", "CANCELED"];
@@ -78,11 +79,18 @@ export function createTask(
     meetingId?: string | null;
     conversationId?: string | null;
     source?: string;
+    attachments?: unknown;
   },
 ) {
   const instruction = input.instruction?.trim();
   if (!instruction) throw new TaskInputError("업무 내용을 입력하세요.");
   if (instruction.length > 20000) throw new TaskInputError("업무 내용이 너무 깁니다 (최대 20,000자).");
+  let attachments: Attachment[];
+  try {
+    attachments = cleanAttachments(input.attachments);
+  } catch (e) {
+    throw new TaskInputError((e as Error).message);
+  }
   const emp = db.select().from(s.employees).where(eq(s.employees.id, input.employeeId)).get();
   if (!emp) throw new TaskInputError("존재하지 않는 직원입니다.");
   const special: Record<string, string> = { MEETING: "회의", CHAT: "대화" };
@@ -110,6 +118,7 @@ export function createTask(
         parentTaskId: input.parentTaskId ?? null,
         meetingId: input.meetingId ?? null,
         conversationId: input.conversationId ?? null,
+        attachments: attachments.length ? JSON.stringify(attachments) : null,
         source: input.source ?? "manual",
         executionMode,
         maxCalls,
@@ -123,7 +132,7 @@ export function createTask(
       taskId: id,
       employeeId: emp.id,
       status: "QUEUED",
-      message: `${name}에게 배정 (${def.label}${executionMode === "manual" ? " · 붙여넣기 방식" : ""})`,
+      message: `${name}에게 배정 (${def.label}${executionMode === "manual" ? " · 붙여넣기 방식" : ""}${attachments.length ? ` · 첨부 ${attachments.length}개` : ""})`,
     });
   });
   return getTask(db, id)!;

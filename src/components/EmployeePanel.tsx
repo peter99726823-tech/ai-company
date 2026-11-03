@@ -7,6 +7,8 @@ import { EMPLOYEE_BY_ID } from "@/domain/employees";
 import { ACTIVITIES, ACTIVITY_LABEL, TASK_STATUS_LABEL, type Activity, type TaskStatus } from "@/domain/types";
 import { TASK_TYPES, DEFAULT_TYPE_FOR, TASK_TYPE_BY_ID } from "@/domain/taskTypes";
 import { portraitDataUrl } from "@/game/sprites/characterArt";
+import { AttachmentPicker } from "./AttachmentPicker";
+import type { Attachment } from "@/domain/attachments";
 import type { OfficeSnapshot } from "@/server/services/office";
 import type { Health } from "@/hooks/useOfficeData";
 
@@ -31,6 +33,7 @@ export function EmployeePanel({ data, health, reload }: { data: OfficeSnapshot |
   const [projectId, setProjectId] = useState("");
   const [type, setType] = useState("GENERAL");
   const [execMode, setExecMode] = useState<"api" | "manual">("manual");
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<{ tone: "ok" | "bad"; text: string } | null>(null);
 
@@ -66,13 +69,14 @@ export function EmployeePanel({ data, health, reload }: { data: OfficeSnapshot |
     if (!instruction.trim() || busy) return;
     setBusy(true);
     setNotice(null);
-    const { ok, j } = await post("/api/tasks", { employeeId: id, instruction, type, projectId: projectId || null, executionMode: execMode });
+    const { ok, j } = await post("/api/tasks", { employeeId: id, instruction, type, projectId: projectId || null, executionMode: execMode, attachments });
     setBusy(false);
     if (!ok) {
       setNotice({ tone: "bad", text: j.error ?? "업무를 등록하지 못했습니다." });
       return;
     }
     setInstruction("");
+    setAttachments([]);
     setNotice({
       tone: "ok",
       text:
@@ -297,25 +301,6 @@ export function EmployeePanel({ data, health, reload }: { data: OfficeSnapshot |
               회의 소집으로 진행하기
             </button>
           )}
-          {typeDef?.upload && (
-            <label className="block rounded-sm border-2 border-dashed border-line p-2 text-[12px]">
-              <span className="pixel text-muted">계약서 파일 (.txt, .md) — 내용이 지시문에 붙습니다</span>
-              <input
-                type="file"
-                accept=".txt,.md,text/plain,text/markdown"
-                aria-label="계약서 파일"
-                className="mt-1 block w-full text-[12px]"
-                onChange={async (e) => {
-                  const f = e.target.files?.[0];
-                  if (!f) return;
-                  if (f.size > 200_000) return setNotice({ tone: "bad", text: "파일이 너무 큽니다 (최대 200KB)." });
-                  const text = await f.text();
-                  setInstruction((cur) => `${cur.trim() ? `${cur.trim()}\n\n` : "이 계약서를 검토해 주세요.\n\n"}--- ${f.name} ---\n${text}`);
-                }}
-              />
-              <span className="mt-1 block text-[11px] text-muted">PDF·한글(hwp) 파일은 아직 직접 읽지 못합니다. 본문을 복사해 붙여넣어 주세요.</span>
-            </label>
-          )}
           <label className="block">
             <span className="pixel text-[12px] text-muted">{profile.name}에게 지시할 업무</span>
             <textarea
@@ -327,6 +312,8 @@ export function EmployeePanel({ data, health, reload }: { data: OfficeSnapshot |
               className="mt-1 w-full resize-y rounded-sm border-2 border-line bg-panel-2 px-2 py-1.5"
             />
           </label>
+          <AttachmentPicker value={attachments} onChange={setAttachments} />
+          {typeDef?.upload && !attachments.length && <p className="text-[11px] text-warn">계약서 파일(.txt .md .pdf)을 첨부해 주세요. 한글·워드 파일은 본문을 복사해 붙여넣으세요.</p>}
           <button type="submit" disabled={busy || !instruction.trim() || !typeDef?.supported} className="pixel w-full rounded-sm bg-hi py-2 text-[13px] font-bold text-void disabled:cursor-not-allowed disabled:opacity-40">
             {busy ? "등록 중…" : "업무 지시하기"}
           </button>

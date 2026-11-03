@@ -9,23 +9,32 @@ import { createTask, getTask, recordEvent, TaskInputError } from "../tasks/servi
 import { buildPrompts, finalizeTask, meetingParticipants, MeetingFormatError } from "../tasks/complete";
 import { manualPrompt } from "./format";
 import { EMPLOYEE_BY_ID } from "@/domain/employees";
+import { cleanAttachments, type Attachment } from "@/domain/attachments";
 
 export const DEFAULT_PARTICIPANTS = ["ceo-advisor", "validator", "cto", "marketing", "pricing"];
 
 export function createMeeting(
   db: DB,
-  input: { topic: string; participantIds: string[]; projectId?: string | null; executionMode: "api" | "manual" },
+  input: { topic: string; participantIds: string[]; projectId?: string | null; executionMode: "api" | "manual"; attachments?: unknown },
 ) {
   const topic = input.topic?.trim();
   if (!topic) throw new TaskInputError("회의 주제를 입력하세요.");
   if (topic.length > 4000) throw new TaskInputError("회의 주제가 너무 깁니다 (최대 4,000자).");
   const ids = [...new Set(input.participantIds)].filter((id) => EMPLOYEE_BY_ID[id]);
   if (ids.length < 2) throw new TaskInputError("참석자를 2명 이상 고르세요.");
+  let attachments: Attachment[];
+  try {
+    attachments = cleanAttachments(input.attachments);
+  } catch (e) {
+    throw new TaskInputError((e as Error).message);
+  }
   // CEO Advisor always attends and speaks last before the synthesis.
   const order = [...ids.filter((id) => id !== "ceo-advisor"), "ceo-advisor"];
   const meetingId = `meet_${randomUUID().slice(0, 8)}`;
   db.transaction((tx) => {
-    tx.insert(s.meetings).values({ id: meetingId, topic, projectId: input.projectId || null, status: "RUNNING", maxCalls: 1 }).run();
+    tx.insert(s.meetings)
+      .values({ id: meetingId, topic, projectId: input.projectId || null, status: "RUNNING", maxCalls: 1, attachments: attachments.length ? JSON.stringify(attachments) : null })
+      .run();
     order.forEach((employeeId, i) => tx.insert(s.meetingParticipants).values({ id: `mp_${randomUUID().slice(0, 8)}`, meetingId, employeeId, order: i }).run());
   });
   const task = createTask(db, {
@@ -43,7 +52,7 @@ export function createMeeting(
     meetingId,
     taskId: task.id,
     employeeId: "ceo-advisor",
-    message: `회의 소집: ${topic.slice(0, 40)} · 참석 ${order.map((id) => EMPLOYEE_BY_ID[id].name).join(", ")}`,
+    message: `회의 소집: ${topic.slice(0, 40)} · 참석 ${order.map((id) => EMPLOYEE_BY_ID[id].name).join(", ")}${attachments.length ? ` · 첨부 ${attachments.length}개` : ""}`,
   });
   return getMeeting(db, meetingId)!;
 }

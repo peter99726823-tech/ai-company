@@ -7,6 +7,8 @@ import { useOffice } from "@/store/officeStore";
 import { EMPLOYEE_BY_ID } from "@/domain/employees";
 import { portraitDataUrl } from "@/game/sprites/characterArt";
 import { ManualRun } from "./ManualRun";
+import { AttachmentPicker } from "./AttachmentPicker";
+import type { Attachment } from "@/domain/attachments";
 import type { OfficeSnapshot } from "@/server/services/office";
 import type { Health } from "@/hooks/useOfficeData";
 
@@ -27,6 +29,7 @@ export function ChatModal({ data, health, reload }: { data: OfficeSnapshot | nul
   const [projectId, setProjectId] = useState("");
   const [chat, setChat] = useState<Chat | null>(null);
   const [text, setText] = useState("");
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const apiReady = !!health?.worker.running && !!health?.ai.keyConfigured;
@@ -63,7 +66,7 @@ export function ChatModal({ data, health, reload }: { data: OfficeSnapshot | nul
     if (!text.trim() || busy) return;
     setBusy(true);
     setErr(null);
-    const r = await fetch(`/api/chat/${id}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text, projectId: projectId || null, executionMode: mode }) });
+    const r = await fetch(`/api/chat/${id}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text, projectId: projectId || null, executionMode: mode, attachments }) });
     const j = await r.json();
     setBusy(false);
     if (!r.ok) {
@@ -71,6 +74,7 @@ export function ChatModal({ data, health, reload }: { data: OfficeSnapshot | nul
       return;
     }
     setText("");
+    setAttachments([]);
     setChat(j);
     reload();
   }
@@ -149,6 +153,7 @@ export function ChatModal({ data, health, reload }: { data: OfficeSnapshot | nul
               보내기
             </button>
           </div>
+          <AttachmentPicker value={attachments} onChange={setAttachments} compact />
           <div className="flex items-center gap-3 text-[11px] text-muted">
             <label className="flex items-center gap-1">
               <input type="radio" name="chat-mode" checked={mode === "manual"} onChange={() => setMode("manual")} /> 붙여넣기 (무료)

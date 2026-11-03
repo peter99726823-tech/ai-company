@@ -21,7 +21,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ employe
   try {
     const b = await req.json();
     return NextResponse.json(
-      sendChat(getDb(), { employeeId, projectId: b.projectId ?? null, text: String(b.text ?? ""), executionMode: b.executionMode === "api" ? "api" : "manual" }),
+      sendChat(getDb(), { employeeId, projectId: b.projectId ?? null, text: String(b.text ?? ""), executionMode: b.executionMode === "api" ? "api" : "manual", attachments: b.attachments }),
       { status: 201 },
     );
   } catch (e) {

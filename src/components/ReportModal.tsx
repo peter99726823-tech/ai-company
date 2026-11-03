@@ -7,6 +7,7 @@ import { useOffice } from "@/store/officeStore";
 import { EMPLOYEE_BY_ID } from "@/domain/employees";
 import type { ReportRow, TaskRow } from "@/server/db/schema";
 import { ReportActions } from "./ReportActions";
+import { parseAttachments } from "@/domain/attachments";
 import type { OfficeSnapshot } from "@/server/services/office";
 import type { Health } from "@/hooks/useOfficeData";
 
@@ -72,6 +73,9 @@ export function ReportModal({ data: office, health, reload }: { data?: OfficeSna
             <details className="mb-3 rounded-sm border border-line bg-panel-2 p-2 text-[12px]">
               <summary className="pixel cursor-pointer text-muted">대표의 원래 지시</summary>
               <p className="mt-1 whitespace-pre-wrap">{data.task.instruction}</p>
+              {parseAttachments(data.task.attachments).length > 0 && (
+                <p className="mt-1 text-muted">첨부: {parseAttachments(data.task.attachments).map((x) => `${x.name} (${x.chars.toLocaleString()}자${x.truncated ? ", 일부만 사용" : ""})`).join(", ")}</p>
+              )}
             </details>
           )}
           <article className="report text-[14px] leading-relaxed" dangerouslySetInnerHTML={{ __html: html }} />

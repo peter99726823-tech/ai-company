@@ -17,6 +17,10 @@ const swap = {
     b.onResolve({ filter: /(^|\/)db\/client$/ }, () => ({ path: path.join(root, "lite/client.ts") }));
     b.onResolve({ filter: /^@\/hooks\/useOfficeData$/ }, () => ({ path: path.join(root, "lite/useOfficeDataLite.ts") }));
     b.onResolve({ filter: /^(server-only|node:crypto)$/ }, () => ({ path: path.join(root, "lite/shims.ts") }));
+    b.onResolve({ filter: /^@\/lib\/pdfWorker$/ }, () => ({ path: path.join(root, "lite/pdfWorker.ts") }));
+    // "?text": embed a file as a string (pdf.js worker for the one-file link version)
+    b.onResolve({ filter: /\?text$/ }, (a) => ({ path: path.join(root, "node_modules", a.path.replace(/\?text$/, "")), namespace: "as-text" }));
+    b.onLoad({ filter: /.*/, namespace: "as-text" }, (a) => ({ contents: fs.readFileSync(a.path, "utf8"), loader: "text" }));
   },
 };
 

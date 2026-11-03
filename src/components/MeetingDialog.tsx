@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 import { useOffice } from "@/store/officeStore";
 import { EMPLOYEES } from "@/domain/employees";
 import { portraitDataUrl } from "@/game/sprites/characterArt";
+import { AttachmentPicker } from "./AttachmentPicker";
+import type { Attachment } from "@/domain/attachments";
 import type { OfficeSnapshot } from "@/server/services/office";
 import type { Health } from "@/hooks/useOfficeData";
 
@@ -16,6 +18,7 @@ export function MeetingDialog({ data, health, reload }: { data: OfficeSnapshot |
   const openMeeting = useOffice((s) => s.openMeeting);
   const [topic, setTopic] = useState("");
   const [projectId, setProjectId] = useState("");
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [picked, setPicked] = useState<string[]>(DEFAULT);
   const apiReady = !!health?.worker.running && !!health?.ai.keyConfigured;
   const [mode, setMode] = useState<"manual" | "api">("manual");
@@ -48,7 +51,7 @@ export function MeetingDialog({ data, health, reload }: { data: OfficeSnapshot |
     const r = await fetch("/api/meetings", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ topic, participantIds: picked, projectId: projectId || null, executionMode: mode }),
+      body: JSON.stringify({ topic, participantIds: picked, projectId: projectId || null, executionMode: mode, attachments }),
     });
     const j = await r.json().catch(() => ({}));
     setBusy(false);
@@ -58,6 +61,7 @@ export function MeetingDialog({ data, health, reload }: { data: OfficeSnapshot |
     }
     setOpen(false);
     setTopic("");
+    setAttachments([]);
     reload();
     openMeeting(j.meeting.id);
   }
@@ -82,6 +86,7 @@ export function MeetingDialog({ data, health, reload }: { data: OfficeSnapshot |
             className="mt-1 w-full resize-y rounded-sm border-2 border-line bg-panel-2 px-2 py-1.5"
           />
         </label>
+        <AttachmentPicker value={attachments} onChange={setAttachments} />
         <label className="block">
           <span className="pixel text-[12px] text-muted">관련 프로젝트</span>
           <select id="meeting-project" value={projectId} onChange={(e) => setProjectId(e.target.value)} className="mt-1 w-full rounded-sm border-2 border-line bg-panel-2 px-2 py-1.5">

@@ -12,8 +12,9 @@ import m1 from "../drizzle/0001_task_cancel.sql";
 import m2 from "../drizzle/0002_meetings_manual.sql";
 import m3 from "../drizzle/0003_chat.sql";
 import m4 from "../drizzle/0004_routines.sql";
+import m5 from "../drizzle/0005_ideas_attachments.sql";
 
-const MIGRATIONS = [m0, m1, m2, m3, m4];
+const MIGRATIONS = [m0, m1, m2, m3, m4, m5];
 
 export type DB = SQLJsDatabase<typeof schema>;
 let raw: Database | null = null;

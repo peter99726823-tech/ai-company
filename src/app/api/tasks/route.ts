@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 
 /** Create a task. The worker picks it up; this route never calls the AI itself. */
 export async function POST(req: Request) {
-  let body: { employeeId?: string; instruction?: string; type?: string; projectId?: string | null; executionMode?: string };
+  let body: { employeeId?: string; instruction?: string; type?: string; projectId?: string | null; executionMode?: string; attachments?: unknown };
   try {
     body = await req.json();
   } catch {
@@ -20,6 +20,7 @@ export async function POST(req: Request) {
       type: body.type === "MEETING" ? undefined : body.type,
       projectId: body.projectId ?? null,
       executionMode: body.executionMode === "manual" ? "manual" : "api",
+      attachments: body.attachments,
     });
     return NextResponse.json({ task }, { status: 201 });
   } catch (e) {

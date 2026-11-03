@@ -105,6 +105,7 @@ export function getOfficeSnapshot() {
     meetings: recentMeetings(db, 6),
     autonomy: getAutonomy(db),
     routines: listRoutines(db),
+    newIdeas: db.select({ n: sql<number>`count(*)` }).from(s.ideas).where(eq(s.ideas.status, "new")).get()!.n,
     attention,
     serverTime: Date.now(),
   };

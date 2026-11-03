@@ -33,7 +33,7 @@ export function getChat(db: DB, employeeId: string, projectId: string | null) {
   return { conversation: conv, messages, pending, failed: failed && (!messages.length || failed.createdAt > messages[messages.length - 1].createdAt) ? failed : null };
 }
 
-export function sendChat(db: DB, input: { employeeId: string; projectId?: string | null; text: string; executionMode: "api" | "manual" }) {
+export function sendChat(db: DB, input: { employeeId: string; projectId?: string | null; text: string; executionMode: "api" | "manual"; attachments?: unknown }) {
   const text = input.text?.trim();
   if (!text) throw new TaskInputError("메시지를 입력하세요.");
   if (text.length > 8000) throw new TaskInputError("메시지가 너무 깁니다 (최대 8,000자).");
@@ -41,7 +41,9 @@ export function sendChat(db: DB, input: { employeeId: string; projectId?: string
   const current = getChat(db, input.employeeId, projectId);
   if (current.pending) throw new TaskInputError("이전 메시지에 대한 답변을 먼저 받아 주세요.");
   const conv = conversationFor(db, input.employeeId, projectId, true)!;
-  db.insert(s.messages).values({ id: `msg_${randomUUID().slice(0, 8)}`, conversationId: conv.id, role: "ceo", content: text }).run();
+  const names = Array.isArray(input.attachments) ? (input.attachments as { name?: string }[]).map((a) => a.name).filter(Boolean) : [];
+  const content = names.length ? `${text}\n\n[첨부: ${names.join(", ")}]` : text;
+  db.insert(s.messages).values({ id: `msg_${randomUUID().slice(0, 8)}`, conversationId: conv.id, role: "ceo", content }).run();
   createTask(db, {
     employeeId: input.employeeId,
     instruction: text,
@@ -50,6 +52,7 @@ export function sendChat(db: DB, input: { employeeId: string; projectId?: string
     conversationId: conv.id,
     executionMode: input.executionMode,
     source: "chat",
+    attachments: input.attachments,
   });
   return getChat(db, input.employeeId, projectId);
 }

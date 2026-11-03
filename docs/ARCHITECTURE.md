@@ -47,6 +47,8 @@
 | Scheduler / Autonomy | `src/server/autonomy/service.ts`, `routines` | 운영 모드, 반복 업무, 제안, 하루 자동 한도. PC는 워커가, 링크 버전은 페이지가 30초마다 실행 | ✅ |
 | Finance | `src/server/finance/service.ts`, `FinanceModal` | 거래내역(실제/시뮬레이션 분리), 월 합계, 분석 지시문 첨부 | ✅ |
 | Projects | `src/server/projects/service.ts`, `ProjectsModal` | 프로젝트 편집·생성·연결 업무 조회 | ✅ |
+| Ideas | `src/server/ideas/service.ts`, `ideas`, `IdeasModal` | 아이디어 메모함, 검증 업무·회의로 연결 | ✅ |
+| Attachments | `src/domain/attachments.ts`, `src/lib/readAttachment.ts`, `AttachmentPicker` | 브라우저에서 텍스트·PDF 글자 추출 → `tasks.attachments`/`meetings.attachments` → 지시문의 "참고 자료" 블록 (그 안의 지시는 따르지 않도록 명시) | ✅ |
 | Backup | `src/server/backup.ts`, `/api/backup`, `scripts/restore.mjs` | JSON(내부 SQLite) 백업, 복원 | ✅ |
 
 ## 디렉터리

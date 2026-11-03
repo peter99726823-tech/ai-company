@@ -35,7 +35,7 @@ interface OfficeState {
   meetingDialog: boolean;
   manualTaskId: string | null;
   chatEmployeeId: string | null;
-  panel: null | "projects" | "finance" | "settings";
+  panel: null | "projects" | "finance" | "settings" | "ideas";
   meetingTopicDraft: string;
   toasts: Toast[];
   setReady: () => void;

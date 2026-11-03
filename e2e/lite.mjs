@@ -202,6 +202,59 @@ try {
   await st2.getByRole("button", { name: "닫기" }).click();
   await page.screenshot({ path: OUT + "lite-03-phase4.png" });
 
+  // ── file attachments (txt + PDF made on the fly) ──
+  const pdfPage = await browser.newPage();
+  await pdfPage.setContent("<h1>Contract TEST-PDF-777</h1><p>제7조 위약금 조항 테스트</p>");
+  const pdfPath = OUT + "lite-test.pdf";
+  await pdfPage.pdf({ path: pdfPath });
+  await pdfPage.close();
+  const txtPath = OUT + "lite-test.txt";
+  fs.writeFileSync(txtPath, "텍스트첨부 TXT-123 내용");
+  await clickEmployee("contract");
+  await page.locator("aside").getByRole("button", { name: "업무 지시", exact: true }).first().click();
+  await page.locator("#order-type").selectOption("CONTRACT_FILE");
+  await page.locator("aside").getByLabel("파일 첨부").setInputFiles([pdfPath, txtPath]);
+  await page.locator("aside [data-testid=attachments]").getByText("lite-test.pdf").waitFor({ timeout: 20000 });
+  await page.locator("aside [data-testid=attachments]").getByText("lite-test.txt").waitFor();
+  check("PDF·텍스트 파일 첨부 → 글자 추출", true);
+  await page.fill("#order-text", "첨부한 계약서 검토해줘");
+  await page.locator("aside").getByRole("button", { name: "업무 지시하기" }).click();
+  const ap = page.getByRole("dialog", { name: "붙여넣기로 업무 처리" });
+  await page.waitForFunction(() => (document.querySelector("[aria-label='붙여넣기로 업무 처리'] textarea[readonly]")?.value ?? "").includes("TEST-PDF-777"), null, { timeout: 10000 });
+  const ptxt = await ap.locator("textarea[readonly]").inputValue();
+  check("첨부 내용이 지시문에 포함 (PDF 본문 + 텍스트)", ptxt.includes("TEST-PDF-777") && ptxt.includes("제7조") && ptxt.includes("TXT-123"));
+  await ap.getByRole("button", { name: "닫기" }).click();
+  await page.locator("aside").getByRole("button", { name: "닫기" }).click();
+
+  const badPath = OUT + "lite-test.hwp";
+  fs.writeFileSync(badPath, "x");
+  await page.getByRole("button", { name: "회의 소집" }).click();
+  const md = page.getByRole("dialog", { name: "회의 소집" });
+  await md.getByLabel("파일 첨부").setInputFiles(badPath);
+  await md.getByText("이 형식은 아직 읽지 못합니다").waitFor();
+  check("지원하지 않는 형식은 안내 (지어내지 않음)", true);
+  await md.getByRole("button", { name: "닫기" }).click();
+
+  // ── idea inbox ──
+  await page.getByRole("button", { name: /^아이디어/ }).click();
+  const im = page.getByRole("dialog", { name: "아이디어 메모함" });
+  await im.getByLabel("아이디어", { exact: true }).fill("카페 재고를 사진으로 세는 앱");
+  await im.getByLabel("아이디어 메모").fill("사장님들이 매일 손으로 셈");
+  await im.getByRole("button", { name: "적어 두기" }).click();
+  await im.locator("[data-testid=ideas] li", { hasText: "카페 재고" }).waitFor();
+  check("아이디어 적어 두기", (await page.locator("header").innerText()).includes("아이디어 1"));
+  await im.locator("[data-testid=ideas] li", { hasText: "카페 재고" }).getByRole("button", { name: "서진에게 검증 맡기기" }).click();
+  const vp = page.getByRole("dialog", { name: "붙여넣기로 업무 처리" });
+  await page.waitForFunction(() => (document.querySelector("[aria-label='붙여넣기로 업무 처리'] textarea[readonly]")?.value ?? "").includes("카페 재고"), null, { timeout: 10000 });
+  check("아이디어 → 서진 검증 업무 (지시문에 아이디어 포함)", true);
+  await vp.getByRole("button", { name: "닫기" }).click();
+  await page.getByRole("button", { name: /^아이디어/ }).click();
+  await im.locator("[data-testid=ideas] li", { hasText: "카페 재고" }).getByRole("button", { name: "회의 열기" }).click();
+  const room4 = page.getByRole("dialog", { name: "회의실" });
+  await room4.locator("[data-testid=manual-run]").waitFor({ timeout: 10000 });
+  check("아이디어 → 회의 열기", (await room4.innerText()).includes("카페 재고"));
+  await room4.getByRole("button", { name: "닫기" }).click();
+
   check("콘솔 오류 없음", errors.length === 0, errors.slice(0, 2).join(" | "));
 } catch (e) {
   check("시나리오 실행", false, e.message.split("\n")[0]);

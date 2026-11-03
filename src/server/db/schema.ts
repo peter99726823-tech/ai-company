@@ -76,6 +76,7 @@ export const tasks = sqliteTable(
     parentTaskId: text("parent_task_id"), // follow-ups (수정 요청 등)
     meetingId: text("meeting_id"),
     conversationId: text("conversation_id"), // CHAT tasks: the conversation the reply belongs to
+    attachments: text("attachments"), // JSON Attachment[]: text extracted from files the CEO attached
     source: text("source").notNull().default("manual"), // manual | proposal | schedule | meeting
     /** "api": the worker calls Claude. "manual": the CEO pastes the prompt into claude.ai and pastes the answer back (no API cost). */
     executionMode: text("execution_mode").notNull().default("api"),
@@ -153,6 +154,7 @@ export const meetings = sqliteTable("meetings", {
   summaryReportId: text("summary_report_id"),
   taskId: text("task_id"), // the task that produces the meeting record
   decision: text("decision"), // JSON {option, note, at}
+  attachments: text("attachments"), // JSON Attachment[]
   createdAt: integer("created_at").notNull().$defaultFn(now),
   endedAt: integer("ended_at"),
 });
@@ -267,3 +269,17 @@ export const routines = sqliteTable("routines", {
   createdAt: integer("created_at").notNull().$defaultFn(now),
 });
 export type RoutineRow = typeof routines.$inferSelect;
+
+/** 아이디어 메모함: ideas jotted down before they become a meeting or a validation task. */
+export const ideas = sqliteTable("ideas", {
+  id: text("id").primaryKey(),
+  title: text("title").notNull(),
+  body: text("body").notNull().default(""),
+  status: text("status").notNull().default("new"), // new | reviewing | active | hold | dropped
+  projectId: text("project_id").references(() => projects.id),
+  linkedTaskId: text("linked_task_id"),
+  linkedMeetingId: text("linked_meeting_id"),
+  createdAt: integer("created_at").notNull().$defaultFn(now),
+  updatedAt: integer("updated_at").notNull().$defaultFn(now),
+});
+export type IdeaRow = typeof ideas.$inferSelect;

@@ -12,6 +12,7 @@ import { getAutonomy, setAutonomy, listRoutines, createRoutine, updateRoutine, d
 import { listTransactions, addTransaction, deleteTransaction } from "../src/server/finance/service";
 import { createProject, updateProject, projectDetail } from "../src/server/projects/service";
 import { toBackupJson, fromBackupJson } from "../src/server/backup";
+import { listIdeas, createIdea, updateIdea, deleteIdea, validateIdea, meetIdea } from "../src/server/ideas/service";
 import { exportDb, replaceDb } from "./client";
 
 type Handler = (m: RegExpMatchArray, body: Record<string, unknown>, query: URLSearchParams) => unknown | Promise<unknown>;
@@ -39,10 +40,16 @@ const GET: [RegExp, Handler][] = [
   [/^\/api\/finance$/, (_m, _b, q) => listTransactions(getDb() as never, q.get("month"))],
   [/^\/api\/projects\/([\w-]+)$/, (m) => projectDetail(getDb() as never, m[1]) ?? notFound("프로젝트를 찾을 수 없습니다.")],
   [/^\/api\/backup$/, () => toBackupJson(exportDb())],
+  [/^\/api\/ideas$/, () => ({ ideas: listIdeas(getDb() as never) })],
 ];
 
 const POST: [RegExp, Handler][] = [
   [/^\/api\/settings\/autonomy$/, (_m, b) => setAutonomy(getDb() as never, b)],
+  [/^\/api\/ideas$/, (_m, b) => createIdea(getDb() as never, b as never)],
+  [/^\/api\/ideas\/([\w-]+)\/update$/, (m, b) => updateIdea(getDb() as never, m[1], b as never)],
+  [/^\/api\/ideas\/([\w-]+)\/delete$/, (m) => deleteIdea(getDb() as never, m[1])],
+  [/^\/api\/ideas\/([\w-]+)\/validate$/, (m) => validateIdea(getDb() as never, m[1], "manual")],
+  [/^\/api\/ideas\/([\w-]+)\/meeting$/, (m) => meetIdea(getDb() as never, m[1], "manual")],
   [/^\/api\/routines$/, (_m, b) => createRoutine(getDb() as never, { ...(b as never), executionMode: "manual" })],
   [/^\/api\/routines\/([\w-]+)\/run$/, (m) => runRoutineNow(getDb() as never, m[1], false)],
   [/^\/api\/routines\/([\w-]+)\/update$/, (m, b) => updateRoutine(getDb() as never, m[1], { enabled: b.enabled as boolean | undefined })],
@@ -54,7 +61,7 @@ const POST: [RegExp, Handler][] = [
   [/^\/api\/projects$/, (_m, b) => createProject(getDb() as never, b as never)],
   [/^\/api\/projects\/([\w-]+)$/, (m, b) => updateProject(getDb() as never, m[1], b as never)],
   [/^\/api\/backup\/restore$/, async (_m, b) => (await replaceDb(fromBackupJson(b)), { ok: true })],
-  [/^\/api\/chat\/([\w-]+)$/, (m, b) => sendChat(getDb() as never, { employeeId: m[1], projectId: (b.projectId as string) ?? null, text: String(b.text ?? ""), executionMode: "manual" })],
+  [/^\/api\/chat\/([\w-]+)$/, (m, b) => sendChat(getDb() as never, { employeeId: m[1], projectId: (b.projectId as string) ?? null, text: String(b.text ?? ""), executionMode: "manual", attachments: b.attachments })],
   [
     /^\/api\/reports\/([\w-]+)\/action$/,
     (m, b) =>
@@ -69,7 +76,7 @@ const POST: [RegExp, Handler][] = [
   [
     /^\/api\/tasks$/,
     (_m, b) => ({
-      task: createTask(getDb() as never, { employeeId: String(b.employeeId ?? ""), instruction: String(b.instruction ?? ""), type: b.type as string, projectId: (b.projectId as string) ?? null, executionMode: "manual" }),
+      task: createTask(getDb() as never, { employeeId: String(b.employeeId ?? ""), instruction: String(b.instruction ?? ""), type: b.type as string, projectId: (b.projectId as string) ?? null, executionMode: "manual", attachments: b.attachments }),
     }),
   ],
   [/^\/api\/tasks\/([\w-]+)\/cancel$/, (m) => conflictIf(requestCancel(getDb() as never, m[1]))],
@@ -83,6 +90,7 @@ const POST: [RegExp, Handler][] = [
         participantIds: Array.isArray(b.participantIds) ? (b.participantIds as unknown[]).map(String) : [],
         projectId: (b.projectId as string) ?? null,
         executionMode: "manual",
+        attachments: b.attachments,
       }),
   ],
   [
@@ -136,7 +144,7 @@ export function installRouter() {
         const body = init?.body ? JSON.parse(String(init.body)) : {};
         const out = await h(m, body, query);
         if (method === "POST") listeners.forEach((fn) => fn());
-        return json(method === "POST" && /^\/api\/(tasks|meetings|routines|finance|projects|chat\/[\w-]+)$/.test(path) ? 201 : 200, out);
+        return json(method === "POST" && /^\/api\/(tasks|meetings|routines|finance|projects|ideas|chat\/[\w-]+)$/.test(path) ? 201 : 200, out);
       } catch (e) {
         if (e instanceof HttpError) return json(e.status, e.body ?? { error: e.message });
         if (e instanceof TaskInputError || (e instanceof Error && /백업 파일/.test(e.message))) return json(400, { error: e.message });

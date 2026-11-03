@@ -18,6 +18,7 @@ export async function POST(req: Request) {
       participantIds: Array.isArray(b.participantIds) ? b.participantIds.map(String) : [],
       projectId: b.projectId ?? null,
       executionMode: b.executionMode === "api" ? "api" : "manual",
+      attachments: b.attachments,
     });
     return NextResponse.json(r, { status: 201 });
   } catch (e) {
