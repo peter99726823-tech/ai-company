@@ -1,6 +1,7 @@
 "use client";
 
 import { create } from "zustand";
+import type { Attachment } from "@/domain/attachments";
 import type { ActorSnapshot } from "@/game/bridge";
 import type { TaskEventRow } from "@/server/db/schema";
 
@@ -34,7 +35,11 @@ interface OfficeState {
   meetingId: string | null;
   meetingDialog: boolean;
   manualTaskId: string | null;
+  /** A just-created task Claude should write right away (the creating click is the viewer's action). */
+  autoTaskId: string | null;
   chatEmployeeId: string | null;
+  /** Material to attach when the chat opens (e.g. "이 보고서로 대화"). */
+  chatAttach: Attachment | null;
   panel: null | "projects" | "finance" | "settings" | "ideas" | "minutes";
   meetingTopicDraft: string;
   /** Meeting whose answer Claude should write right away (link version, "Claude 자동"). */
@@ -50,8 +55,8 @@ interface OfficeState {
   openReport: (id: string | null) => void;
   openMeeting: (id: string | null) => void;
   setMeetingDialog: (v: boolean) => void;
-  openManual: (taskId: string | null) => void;
-  openChat: (employeeId: string | null) => void;
+  openManual: (taskId: string | null, auto?: boolean) => void;
+  openChat: (employeeId: string | null, attach?: Attachment | null) => void;
   setPanel: (p: OfficeState["panel"]) => void;
   startMeetingWith: (topic: string) => void;
   toast: (t: Omit<Toast, "id">) => void;
@@ -72,7 +77,9 @@ export const useOffice = create<OfficeState>((set) => ({
   meetingId: null,
   meetingDialog: false,
   manualTaskId: null,
+  autoTaskId: null,
   chatEmployeeId: null,
+  chatAttach: null,
   panel: null,
   meetingTopicDraft: "",
   autoMeetingId: null,
@@ -106,8 +113,8 @@ export const useOffice = create<OfficeState>((set) => ({
   openReport: (reportId) => set({ reportId }),
   openMeeting: (meetingId) => set({ meetingId }),
   setMeetingDialog: (meetingDialog) => set({ meetingDialog }),
-  openManual: (manualTaskId) => set({ manualTaskId }),
-  openChat: (chatEmployeeId) => set({ chatEmployeeId }),
+  openManual: (manualTaskId, auto) => set({ manualTaskId, autoTaskId: auto && manualTaskId ? manualTaskId : null }),
+  openChat: (chatEmployeeId, attach) => set({ chatEmployeeId, chatAttach: attach ?? null }),
   setPanel: (panel) => set({ panel }),
   startMeetingWith: (meetingTopicDraft) => set({ meetingTopicDraft, meetingDialog: true }),
   toast: (t) => set((s) => ({ toasts: [...s.toasts, { ...t, id: ++toastSeq }].slice(-4) })),

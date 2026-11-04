@@ -68,7 +68,7 @@ export function IdeasModal({ data, health, reload }: { data: OfficeSnapshot | nu
       setMsg({ ok: true, t: apiReady ? "서진에게 검증을 맡겼습니다." : "서진에게 검증을 맡겼습니다. 지시문을 claude.ai에 붙여넣어 주세요." });
       if (!apiReady) {
         close();
-        useOffice.getState().openManual(j.taskId);
+        useOffice.getState().openManual(j.taskId, true);
       }
     }
   }

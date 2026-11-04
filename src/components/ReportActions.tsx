@@ -1,4 +1,5 @@
 "use client";
+import { useOffice } from "@/store/officeStore";
 
 import { useState } from "react";
 import { EMPLOYEES, EMPLOYEE_BY_ID } from "@/domain/employees";
@@ -56,6 +57,8 @@ export function ReportActions(p: Props) {
     const j = await r.json();
     if (!r.ok) return setMsg({ ok: false, text: j.error });
     setMsg({ ok: true, text: `${LABEL[action!]} 기록했습니다.${j.createdTaskId ? " 후속 업무를 등록했습니다." : ""}` });
+    // A follow-up without an API key: open it right away (Claude writes it immediately when available).
+    if (j.createdTaskId && mode === "manual") useOffice.getState().openManual(j.createdTaskId, true);
     setAction(null);
     setNote("");
     p.onDone();

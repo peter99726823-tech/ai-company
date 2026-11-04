@@ -31,7 +31,7 @@ export function ManualRun({
   taskId?: string;
   /** …or several follow-up tasks done in one answer. */
   batch?: BatchJob;
-  onDone: (result?: { synthesisReportId?: string }) => void;
+  onDone: (result?: { synthesisReportId?: string; reportId?: string }) => void;
   meeting?: boolean;
   submitLabel?: string;
   autoStart?: boolean;

@@ -55,6 +55,9 @@ export function TopBar({ data, health, live }: { data: OfficeSnapshot | null; he
           <button type="button" onClick={() => useOffice.getState().setMeetingDialog(true)} className="pixel shrink-0 rounded-sm bg-hi px-3 py-1 text-[13px] font-bold text-void hover:brightness-110">
             회의 소집
           </button>
+          <button type="button" onClick={() => useOffice.getState().openChat("ceo-advisor")} className="pixel shrink-0 rounded-sm border-2 border-hi/70 bg-panel-2 px-2 py-0.5 text-[12px] text-hi hover:border-hi">
+            💬 대화
+          </button>
           {(
             [
               ["minutes", "📄 회의록"],

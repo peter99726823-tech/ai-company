@@ -49,3 +49,9 @@ export function parseAttachments(json: string | null | undefined): Attachment[] 
     return [];
   }
 }
+
+/** Text already in the app (a report, minutes) as a chat attachment. */
+export function textAttachment(name: string, text: string): Attachment {
+  const t = text.trim();
+  return { name, kind: "md", text: t.slice(0, ATTACH_LIMITS.perFile), chars: t.length, truncated: t.length > ATTACH_LIMITS.perFile };
+}

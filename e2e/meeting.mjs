@@ -143,7 +143,7 @@ try {
   await panel.getByRole("button", { name: "업무 지시", exact: true }).first().click();
   await page.fill("#order-text", "AI 맞춤형 솔루션 첫 고객에게 보낼 DM 초안 3개");
   await panel.getByRole("button", { name: "업무 지시하기" }).click();
-  const mm = page.getByRole("dialog", { name: "붙여넣기로 업무 처리" });
+  const mm = page.getByRole("dialog", { name: "업무 처리" });
   await mm.locator("[data-testid=manual-run]").waitFor({ timeout: 10000 });
   await mm.locator("textarea:not([readonly])").fill("## 요약\n[테스트 문구] DM 초안 3개를 작성했습니다. 고객 문제에서 출발했습니다.\n## 결과물\n1. 안녕하세요...\n");
   await mm.getByRole("button", { name: "보고서 제출" }).click();

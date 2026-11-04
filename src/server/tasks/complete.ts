@@ -65,7 +65,17 @@ export function buildPrompts(db: DB, task: Task, webSearch: boolean): { system: 
     const lines = history.map((m) => `${m.role === "ceo" ? "대표" : name}: ${m.content}`).join("\n\n");
     const chatSystem = `${system.split("보고서 형식")[0].trim()}\n\n지금은 대표와 1:1로 대화 중입니다. 보고서 형식을 쓰지 말고, 당신의 전문 분야 관점에서 짧고 분명하게 답하세요. 모르는 것은 모른다고 하고, 더 깊은 분석이 필요하면 업무로 지시해 달라고 제안하세요.`;
     const ctx = project ? `# 이 대화의 프로젝트\n${project.name}: ${project.description} (단계: ${project.stage}, 목표: ${project.goal})\n\n` : "";
-    const att = attachmentsForPrompt(parseAttachments(task.attachments), "대표가 이번 메시지에 첨부한 자료");
+    let att = attachmentsForPrompt(parseAttachments(task.attachments), "대표가 이번 메시지에 첨부한 자료");
+    if (!att) {
+      // Follow-up questions about material attached earlier in this conversation keep that material.
+      const earlier = db
+        .select({ a: s.tasks.attachments })
+        .from(s.tasks)
+        .where(and(eq(s.tasks.conversationId, task.conversationId), sql`${s.tasks.attachments} is not null`))
+        .orderBy(desc(s.tasks.createdAt))
+        .get();
+      if (earlier?.a) att = attachmentsForPrompt(parseAttachments(earlier.a), "이 대화에서 대표가 앞서 첨부한 자료");
+    }
     return { system: chatSystem, user: `${ctx}# 지금까지의 대화\n${lines}\n\n${att ? `${att}\n\n` : ""}# 할 일\n대표의 마지막 말에 ${name}으로서 답하세요. 답변만 쓰세요.` };
   }
   const def = TASK_TYPE_BY_ID[task.type] ?? TASK_TYPE_BY_ID.GENERAL;

@@ -2,6 +2,7 @@
 
 import { md } from "@/lib/markdown";
 import { ExportButtons } from "./ExportButtons";
+import { textAttachment } from "@/domain/attachments";
 import { useEffect, useState } from "react";
 import { useOffice } from "@/store/officeStore";
 import { EMPLOYEE_BY_ID } from "@/domain/employees";
@@ -64,7 +65,20 @@ export function ReportModal({ data: office, health, reload }: { data?: OfficeSna
             )}
             {data && (
               <div className="mt-1.5">
-                <ExportButtons title={data.report.title} markdown={() => `# ${data.report.title}\n\n- 작성: ${emp?.name ?? ""} (${emp?.title ?? ""})\n- 작성일: ${new Date(data.report.createdAt).toLocaleString("ko-KR")}\n\n${data.report.body}`} />
+                <div className="flex flex-wrap items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const rep = data.report;
+                      close();
+                      useOffice.getState().openChat(rep.employeeId, textAttachment(`보고서: ${rep.title}`, rep.body));
+                    }}
+                    className="pixel rounded-sm bg-hi px-2 py-0.5 text-[11px] font-bold text-void"
+                  >
+                    💬 {emp?.name ?? "작성자"}에게 이어서 질문
+                  </button>
+                  <ExportButtons title={data.report.title} markdown={() => `# ${data.report.title}\n\n- 작성: ${emp?.name ?? ""} (${emp?.title ?? ""})\n- 작성일: ${new Date(data.report.createdAt).toLocaleString("ko-KR")}\n\n${data.report.body}`} />
+                </div>
               </div>
             )}
           </div>

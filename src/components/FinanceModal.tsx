@@ -64,7 +64,7 @@ export function FinanceModal({ data, health, reload }: { data: OfficeSnapshot | 
     if (!ok) return setMsg({ ok: false, t: j.error ?? "요청하지 못했습니다." });
     reload();
     close();
-    if (mode === "manual") useOffice.getState().openManual(j.task.id);
+    if (mode === "manual") useOffice.getState().openManual(j.task.id, true);
   }
 
   return (

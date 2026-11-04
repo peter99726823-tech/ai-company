@@ -89,7 +89,7 @@ export function EmployeePanel({ data, health, reload }: { data: OfficeSnapshot |
     });
     setTab("info");
     reload();
-    if (execMode === "manual") openManual(j.task.id);
+    if (execMode === "manual") openManual(j.task.id, true);
   }
 
   async function act(url: string, body?: unknown) {

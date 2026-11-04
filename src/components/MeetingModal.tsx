@@ -8,6 +8,7 @@ import { TASK_STATUS_LABEL, type TaskStatus } from "@/domain/types";
 import { portraitDataUrl } from "@/game/sprites/characterArt";
 import { ManualRun } from "./ManualRun";
 import { ExportButtons } from "./ExportButtons";
+import { textAttachment } from "@/domain/attachments";
 import { useSample } from "@/lib/claudeSample";
 import type { Health } from "@/hooks/useOfficeData";
 
@@ -189,6 +190,17 @@ export function MeetingModal({ health, reload }: { health: Health | null; reload
               <section className="rounded-sm border-2 border-hi/50 p-3">
                 <div className="flex flex-wrap items-center gap-2">
                   <div className="pixel flex-1 text-[13px] text-hi">CEO Advisor 종합</div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const att = textAttachment(`회의록: ${topicTitle(d.meeting.topic)}`, minutesMarkdown(d));
+                      close();
+                      useOffice.getState().openChat("ceo-advisor", att);
+                    }}
+                    className="pixel rounded-sm bg-hi px-2 py-0.5 text-[11px] font-bold text-void"
+                  >
+                    💬 이 회의로 대화
+                  </button>
                   <ExportButtons title={topicTitle(d.meeting.topic)} markdown={() => minutesMarkdown(d)} />
                 </div>
                 <div className="report text-[13px]" dangerouslySetInnerHTML={{ __html: md(d.report?.body ?? "") }} />

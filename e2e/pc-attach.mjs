@@ -40,8 +40,8 @@ try {
   await page.locator("aside [data-testid=attachments]").getByText("pc-test.pdf").waitFor({ timeout: 20000 });
   await page.fill("#order-text", "검토해줘");
   await page.locator("aside").getByRole("button", { name: "업무 지시하기" }).click();
-  await page.waitForFunction(() => (document.querySelector("[aria-label='붙여넣기로 업무 처리'] textarea[readonly]")?.value ?? "").includes("PC-PDF-555"), null, { timeout: 15000 });
-  const v = await page.locator("[aria-label='붙여넣기로 업무 처리'] textarea[readonly]").inputValue();
+  await page.waitForFunction(() => (document.querySelector("[aria-label='업무 처리'] textarea[readonly]")?.value ?? "").includes("PC-PDF-555"), null, { timeout: 15000 });
+  const v = await page.locator("[aria-label='업무 처리'] textarea[readonly]").inputValue();
   check("PC: PDF 첨부 → 글자 추출 → 지시문 포함", v.includes("PC-PDF-555") && v.includes("한글 본문"));
   const idea = await fetch(`${BASE}/api/ideas`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title: "PC 아이디어" }) }).then((r) => r.json());
   const v2 = await fetch(`${BASE}/api/ideas/${idea.id}/validate`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }).then((r) => r.json());

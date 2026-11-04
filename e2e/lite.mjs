@@ -105,6 +105,10 @@ try {
   await rm.locator("[data-testid=report-actions] textarea").fill("더 짧고 강하게");
   await rm.getByRole("button", { name: "수정 요청 확정" }).click();
   await rm.getByText("후속 업무를 등록했습니다").waitFor({ timeout: 10000 });
+  const taskWin = page.getByRole("dialog", { name: "업무 처리" });
+  await taskWin.waitFor({ timeout: 10000 });
+  check("수정 요청 → 후속 업무 창이 바로 열림", await taskWin.getByTestId("manual-run").isVisible());
+  await taskWin.getByRole("button", { name: "닫기" }).click();
   check("보고서 수정 요청 → 후속 업무 등록·이력 표시", (await rm.locator("[data-testid=report-history]").innerText()).includes("더 짧고 강하게"));
   const fuPrompt = await page.evaluate(async () => {
     const o = await fetch("/api/office").then((r) => r.json());
@@ -167,8 +171,8 @@ try {
   const sum = await fm.locator("[data-testid=finance-summary]").innerText();
   check("거래 입력: 실제와 시뮬레이션 분리 합계", sum.includes("지출 30,000원") && sum.includes("시뮬레이션 (1건"));
   await fm.getByRole("button", { name: "지호에게 분석 요청" }).click();
-  const mm = page.getByRole("dialog", { name: "붙여넣기로 업무 처리" });
-  await page.waitForFunction(() => (document.querySelector("[aria-label='붙여넣기로 업무 처리'] textarea[readonly]")?.value ?? "").includes("서버 비용"), null, { timeout: 10000 });
+  const mm = page.getByRole("dialog", { name: "업무 처리" });
+  await page.waitForFunction(() => (document.querySelector("[aria-label='업무 처리'] textarea[readonly]")?.value ?? "").includes("서버 비용"), null, { timeout: 10000 });
   check("분석 요청 지시문에 거래내역 자동 첨부", true);
   await mm.getByRole("button", { name: "닫기" }).click();
 
@@ -219,8 +223,8 @@ try {
   check("PDF·텍스트 파일 첨부 → 글자 추출", true);
   await page.fill("#order-text", "첨부한 계약서 검토해줘");
   await page.locator("aside").getByRole("button", { name: "업무 지시하기" }).click();
-  const ap = page.getByRole("dialog", { name: "붙여넣기로 업무 처리" });
-  await page.waitForFunction(() => (document.querySelector("[aria-label='붙여넣기로 업무 처리'] textarea[readonly]")?.value ?? "").includes("TEST-PDF-777"), null, { timeout: 10000 });
+  const ap = page.getByRole("dialog", { name: "업무 처리" });
+  await page.waitForFunction(() => (document.querySelector("[aria-label='업무 처리'] textarea[readonly]")?.value ?? "").includes("TEST-PDF-777"), null, { timeout: 10000 });
   const ptxt = await ap.locator("textarea[readonly]").inputValue();
   check("첨부 내용이 지시문에 포함 (PDF 본문 + 텍스트)", ptxt.includes("TEST-PDF-777") && ptxt.includes("제7조") && ptxt.includes("TXT-123"));
   await ap.getByRole("button", { name: "닫기" }).click();
@@ -244,8 +248,8 @@ try {
   await im.locator("[data-testid=ideas] li", { hasText: "카페 재고" }).waitFor();
   check("아이디어 적어 두기", (await page.locator("header").innerText()).includes("아이디어 1"));
   await im.locator("[data-testid=ideas] li", { hasText: "카페 재고" }).getByRole("button", { name: "서진에게 검증 맡기기" }).click();
-  const vp = page.getByRole("dialog", { name: "붙여넣기로 업무 처리" });
-  await page.waitForFunction(() => (document.querySelector("[aria-label='붙여넣기로 업무 처리'] textarea[readonly]")?.value ?? "").includes("카페 재고"), null, { timeout: 10000 });
+  const vp = page.getByRole("dialog", { name: "업무 처리" });
+  await page.waitForFunction(() => (document.querySelector("[aria-label='업무 처리'] textarea[readonly]")?.value ?? "").includes("카페 재고"), null, { timeout: 10000 });
   check("아이디어 → 서진 검증 업무 (지시문에 아이디어 포함)", true);
   await vp.getByRole("button", { name: "닫기" }).click();
   await page.getByRole("button", { name: /^아이디어/ }).click();
@@ -336,12 +340,12 @@ try {
   check("📁 폴더 선택 → 폴더가 첨부 1개로 묶임", true);
   await page.fill("#order-text", "이 게임 코드 리뷰해줘");
   await page.locator("aside").getByRole("button", { name: "업무 지시하기" }).click();
-  await page.waitForFunction(() => (document.querySelector("[aria-label='붙여넣기로 업무 처리'] textarea[readonly]")?.value ?? "").includes("GAME-JS-77"), null, { timeout: 10000 });
-  const fp = await page.locator("[aria-label='붙여넣기로 업무 처리'] textarea[readonly]").inputValue();
+  await page.waitForFunction(() => (document.querySelector("[aria-label='업무 처리'] textarea[readonly]")?.value ?? "").includes("GAME-JS-77"), null, { timeout: 10000 });
+  const fp = await page.locator("[aria-label='업무 처리'] textarea[readonly]").inputValue();
   check("HTML은 소스 그대로 지시문에 포함", fp.includes("id='DROP-HTML-8'") && fp.includes("<canvas id='HTML-SRC-42'>"));
   check("폴더: 구조 목록 + 하위 폴더 코드 + 메모 포함", fp.includes("[폴더 구조]") && fp.includes("js/game.js") && fp.includes("GAME-JS-77") && fp.includes("NOTES-5"));
   check("폴더: node_modules 제외, 이미지는 목록에만", !fp.includes("SHOULD-NOT-APPEAR") && fp.includes("logo.png  (읽지 않음)") && fp.includes("제외"));
-  await page.getByRole("dialog", { name: "붙여넣기로 업무 처리" }).getByRole("button", { name: "닫기" }).click();
+  await page.getByRole("dialog", { name: "업무 처리" }).getByRole("button", { name: "닫기" }).click();
   await page.locator("aside").getByRole("button", { name: "닫기" }).click();
 
   // real folder drag through Chromium's native drag events (directory entries can't be faked in-page)
