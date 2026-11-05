@@ -40,7 +40,7 @@ interface OfficeState {
   chatEmployeeId: string | null;
   /** Material to attach when the chat opens (e.g. "이 보고서로 대화"). */
   chatAttach: Attachment | null;
-  panel: null | "projects" | "finance" | "settings" | "ideas" | "minutes";
+  panel: null | "projects" | "finance" | "settings" | "ideas" | "minutes" | "work";
   meetingTopicDraft: string;
   /** Meeting whose answer Claude should write right away (link version, "Claude 자동"). */
   autoMeetingId: string | null;

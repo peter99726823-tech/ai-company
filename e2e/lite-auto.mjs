@@ -283,7 +283,44 @@ try {
     await p6.close();
   }
 
-  // ── denied consent ──
+  // ── 업무 보기: one box → auto-assigned → Claude writes it → found in 결과물 보관함 ──
+  {
+    const p7 = await browser.newPage({ viewport: { width: 1280, height: 860 } });
+    await p7.addInitScript(fake("ok"));
+    await p7.goto("http://localhost:4457/");
+    await p7.getByText("사무실을 여는 중").waitFor({ state: "detached", timeout: 30000 });
+    await p7.getByRole("button", { name: /⚡ 업무/ }).click();
+    const w = p7.getByRole("dialog", { name: "업무 보기" });
+    await p7.fill("#work-command", "공모전 기획서 목차를 잡아줘");
+    check("자동 배정: 기획서 → 은채", (await w.getByRole("combobox", { name: "담당 직원" }).inputValue()) === "planner", await w.getByTestId("routing-reason").innerText());
+    await w.getByRole("combobox", { name: "프로젝트" }).selectOption("number-maze");
+    await p7.screenshot({ path: OUT + "lite-work-command.png" });
+    await w.getByRole("button", { name: "지시하기" }).click();
+    const rep7 = p7.getByRole("dialog", { name: "결과 보고서" });
+    await rep7.waitFor({ timeout: 20000 });
+    check("지시 → Claude가 바로 작성 → 보고서 열림", (await rep7.innerText()).includes("추가 분석 결과입니다"));
+    await rep7.getByRole("button", { name: "닫기" }).click();
+    await w.getByRole("tab", { name: "결과물 보관함" }).click();
+    await p7.fill("[aria-label='결과물 검색']", "추가 분석 결과");
+    await w.getByTestId("results").locator("li").first().waitFor({ timeout: 10000 });
+    check("결과물 보관함 검색", (await w.getByTestId("results").innerText()).includes("공모전 기획서 목차"));
+    await w.getByRole("tab", { name: "사용량·비용" }).click();
+    await w.getByText("Claude 자동 실행").waitFor();
+    check("사용량: Claude 자동 실행 수 표시", /1 \/ 1회/.test(await w.getByTestId("work-tab-cost").innerText()));
+    // same instruction again while one is open → refused
+    await w.getByRole("tab", { name: /진행 중/ }).click();
+    await p7.fill("#work-command", "중복 확인용 일정표");
+    await w.getByRole("combobox", { name: "담당 직원" }).selectOption("ops");
+    await p7.evaluate(() => fetch("/api/tasks", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ employeeId: "ops", instruction: "중복 확인용 일정표" }) }));
+    await w.getByRole("button", { name: "지시하기" }).click();
+    await w.getByText("같은 업무가 이미 진행 중").waitFor({ timeout: 10000 });
+    check("같은 업무 중복 지시 막힘", true);
+    check("진행 중 탭에 표시", (await w.getByTestId("work-tab-active").innerText()).includes("중복 확인용 일정표"));
+    await p7.screenshot({ path: OUT + "lite-work-active.png" });
+    await p7.close();
+  }
+
+    // ── denied consent ──
   const p2 = await browser.newPage({ viewport: { width: 1280, height: 800 } });
   await p2.addInitScript(fake("deny"));
   await p2.goto("http://localhost:4457/");

@@ -5,6 +5,7 @@
  */
 import { randomUUID } from "node:crypto";
 import { and, asc, desc, eq, sql } from "drizzle-orm";
+import { projectMemory } from "../work/service";
 import { EMPLOYEE_BY_ID } from "@/domain/employees";
 import type { DB } from "../db/client";
 import * as s from "../db/schema";
@@ -17,6 +18,11 @@ import { transactionsForPrompt } from "../finance/service";
 import { attachmentsForPrompt, parseAttachments } from "@/domain/attachments";
 
 type Task = typeof s.tasks.$inferSelect;
+
+function meetingMemory(db: DB, projectId: string | null) {
+  const mem = projectMemory(db, projectId);
+  return mem ? `\n\n${mem}` : "";
+}
 
 function projectOf(db: DB, id: string | null) {
   return id ? (db.select().from(s.projects).where(eq(s.projects.id, id)).get() ?? null) : null;
@@ -42,7 +48,9 @@ export function buildPrompts(db: DB, task: Task, webSearch: boolean): { system: 
         project,
         companyName: company?.name,
         webSearch,
-      }) + (att ? `\n\n${att}` : ""),
+      }) +
+        (meetingMemory(db, meeting.projectId)) +
+        (att ? `\n\n${att}` : ""),
     };
   }
   const system = db
@@ -64,7 +72,8 @@ export function buildPrompts(db: DB, task: Task, webSearch: boolean): { system: 
     const name = EMPLOYEE_BY_ID[task.employeeId]?.name ?? "직원";
     const lines = history.map((m) => `${m.role === "ceo" ? "대표" : name}: ${m.content}`).join("\n\n");
     const chatSystem = `${system.split("보고서 형식")[0].trim()}\n\n지금은 대표와 1:1로 대화 중입니다. 보고서 형식을 쓰지 말고, 당신의 전문 분야 관점에서 짧고 분명하게 답하세요. 모르는 것은 모른다고 하고, 더 깊은 분석이 필요하면 업무로 지시해 달라고 제안하세요.`;
-    const ctx = project ? `# 이 대화의 프로젝트\n${project.name}: ${project.description} (단계: ${project.stage}, 목표: ${project.goal})\n\n` : "";
+    const mem = projectMemory(db, task.projectId, { maxChars: 1500 });
+    const ctx = project ? `# 이 대화의 프로젝트\n${project.name}: ${project.description} (단계: ${project.stage}, 목표: ${project.goal})\n\n${mem ? `${mem}\n\n` : ""}` : "";
     let att = attachmentsForPrompt(parseAttachments(task.attachments), "대표가 이번 메시지에 첨부한 자료");
     if (!att) {
       // Follow-up questions about material attached earlier in this conversation keep that material.
@@ -86,6 +95,8 @@ export function buildPrompts(db: DB, task: Task, webSearch: boolean): { system: 
       `# 관련 프로젝트 (대표가 입력한 정보, "미확인"은 아직 모르는 값)\n- 이름: ${project.name}\n- 설명: ${project.description}\n- 목표: ${project.goal}\n- 현재 단계: ${project.stage}\n- 다음 계획: ${project.nextPlan}`,
     );
   }
+  const mem = projectMemory(db, task.projectId, { excludeTaskId: task.parentTaskId ?? undefined });
+  if (mem) parts.push(mem);
   parts.push(`# 업무 유형\n${def.label}: ${def.guide}`);
   if (task.type === "TRANSACTIONS") {
     parts.push(`# 앱에 입력된 거래내역 (대표가 입력한 실제 데이터와 시뮬레이션 데이터, 구분 열 참고)\n${transactionsForPrompt(db, task.projectId)}`);

@@ -12,6 +12,7 @@ import { COMPANY_RULES, ROLE_PROMPTS } from "../ai/prompts";
 import { buildPrompts, finalizeTask } from "./complete";
 import { createTask, getTask, TaskInputError } from "./service";
 import { EMPLOYEE_BY_ID } from "@/domain/employees";
+import { projectMemory } from "../work/service";
 
 export const TASK_MARK = "=== 업무:";
 export const BATCH_SUMMARY_MARK = "=== 종합: CEO Advisor ===";
@@ -34,9 +35,12 @@ function loadTasks(db: DB, taskIds: string[]) {
 export function batchPrompt(db: DB, taskIds: string[]): string {
   const tasks = loadTasks(db, taskIds);
   const rules = COMPANY_RULES;
+  // Project memory is the same for every task in a batch: send it once, not per task.
+  const shared = projectMemory(db, tasks[0].projectId, { excludeTaskId: tasks[0].parentTaskId ?? undefined });
   const blocks = tasks.map((t, i) => {
     const e = EMPLOYEE_BY_ID[t.employeeId];
-    const { user } = buildPrompts(db, t, false);
+    const own = projectMemory(db, t.projectId, { excludeTaskId: t.parentTaskId ?? undefined });
+    const user = buildPrompts(db, t, false).user.replace(own ? `${own}\n\n` : "\u0000", "");
     return `## 업무 ${i + 1} — ${t.id} | ${e.name} (${e.title})
 ### 담당자 역할
 ${ROLE_PROMPTS[t.employeeId] ?? ""}
@@ -49,7 +53,7 @@ ${user}`;
 # 공통 규칙 (모든 업무에 적용)
 ${rules}
 
-# 업무 목록 (${tasks.length}건, 이 순서대로 작성)
+${shared ? `${shared}\n\n` : ""}# 업무 목록 (${tasks.length}건, 이 순서대로 작성)
 ${blocks.join("\n\n")}
 
 # 출력 형식 (반드시 이 구분선을 그대로 쓰세요. 구분선 줄은 수정하지 마세요)

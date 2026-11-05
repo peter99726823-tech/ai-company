@@ -36,7 +36,7 @@ const js = await build({
   tsconfig: path.join(root, "tsconfig.json"),
   plugins: [swap],
   external: ["fs", "path", "crypto"], // only referenced on sql.js's Node code path
-  define: { "process.env.NODE_ENV": '"production"', "process.env.AI_MAX_CALLS_PER_TASK": '"3"' },
+  define: { "process.env.NODE_ENV": '"production"', "process.env.AI_MAX_CALLS_PER_TASK": '"3"', "process.env.AI_DAILY_BUDGET_USD": '"0"' },
   loader: { ".wasm": "binary", ".sql": "text", ".json": "json" },
   logLevel: "warning",
 });

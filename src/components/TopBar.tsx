@@ -52,7 +52,10 @@ export function TopBar({ data, health, live }: { data: OfficeSnapshot | null; he
         {/* Below md the menu gets its own full-width row; a scroll area never right-aligns (that would hide its start). */}
         <nav className="scroll-thin w-full min-w-0 overflow-x-auto whitespace-nowrap py-0.5 md:w-auto md:flex-1" aria-label="메뉴">
           <div className="flex w-max items-center gap-1 md:ml-auto">
-          <button type="button" onClick={() => useOffice.getState().setMeetingDialog(true)} className="pixel shrink-0 rounded-sm bg-hi px-3 py-1 text-[13px] font-bold text-void hover:brightness-110">
+          <button type="button" onClick={() => useOffice.getState().setPanel("work")} className="pixel shrink-0 rounded-sm bg-hi px-3 py-1 text-[13px] font-bold text-void hover:brightness-110" title="업무 지시 · 진행 중 · 결정 대기 · 결과물 · 비용">
+            ⚡ 업무{(data?.counts.running ?? 0) + (data?.counts.queued ?? 0) + (data?.counts.waitingApproval ?? 0) ? ` ${(data?.counts.running ?? 0) + (data?.counts.queued ?? 0) + (data?.counts.waitingApproval ?? 0)}` : ""}
+          </button>
+          <button type="button" onClick={() => useOffice.getState().setMeetingDialog(true)} className="pixel shrink-0 rounded-sm border-2 border-hi bg-panel-2 px-3 py-0.5 text-[13px] font-bold text-hi hover:bg-hi hover:text-void">
             회의 소집
           </button>
           <button type="button" onClick={() => useOffice.getState().openChat("ceo-advisor")} className="pixel shrink-0 rounded-sm border-2 border-hi/70 bg-panel-2 px-2 py-0.5 text-[12px] text-hi hover:border-hi">

@@ -102,6 +102,15 @@ export function createTask(
     const p = db.select({ id: s.projects.id }).from(s.projects).where(eq(s.projects.id, input.projectId)).get();
     if (!p) throw new TaskInputError("존재하지 않는 프로젝트입니다.");
   }
+  // The same instruction to the same employee while it is still open would only spend twice.
+  if (type !== "CHAT") {
+    const dup = db
+      .select({ id: s.tasks.id, title: s.tasks.title })
+      .from(s.tasks)
+      .where(and(eq(s.tasks.employeeId, emp.id), eq(s.tasks.instruction, instruction), inArray(s.tasks.status, ["QUEUED", "PLANNING", "RUNNING", "WAITING_APPROVAL"])))
+      .get();
+    if (dup) throw new TaskInputError(`같은 업무가 이미 진행 중입니다: "${dup.title}" (업무 ID ${dup.id}). 그 업무를 끝내거나 취소한 뒤 다시 지시하세요.`);
+  }
   const id = `task_${randomUUID().slice(0, 8)}`;
   const title = instruction.split("\n")[0].slice(0, 60) + (instruction.length > 60 ? "…" : "");
   const maxCalls = Math.max(1, Math.min(10, Number(process.env.AI_MAX_CALLS_PER_TASK ?? 3)));

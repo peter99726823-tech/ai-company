@@ -6,6 +6,7 @@ import { getDb } from "./client";
 import { getOfficeSnapshot } from "../src/server/services/office";
 import { createTask, getTaskDetail, requestCancel, retryTask, getReport, noteTask, TaskInputError } from "../src/server/tasks/service";
 import { batchPrompt, submitBatch } from "../src/server/tasks/batch";
+import { workBoard, searchReports, usageSummary } from "../src/server/work/service";
 import { createMeeting, getMeeting, recentMeetings, decideMeeting, getManualPrompt, submitManualAnswer, meetingMinutes } from "../src/server/meetings/service";
 import { getChat, sendChat } from "../src/server/chat/service";
 import { actOnReport, type ReportAction } from "../src/server/reports/service";
@@ -29,6 +30,9 @@ export const LITE_HEALTH = {
 
 const GET: [RegExp, Handler][] = [
   [/^\/api\/office$/, () => getOfficeSnapshot()],
+  [/^\/api\/work\/board$/, () => workBoard(getDb() as never)],
+  [/^\/api\/work\/reports$/, (_m, _b, q) => ({ reports: searchReports(getDb() as never, { q: q.get("q") ?? "", projectId: q.get("projectId"), employeeId: q.get("employeeId") }) })],
+  [/^\/api\/work\/usage$/, () => usageSummary(getDb() as never)],
   [/^\/api\/health$/, () => LITE_HEALTH],
   [/^\/api\/meetings$/, () => ({ meetings: recentMeetings(getDb() as never, 20) })],
   [/^\/api\/meetings\/minutes$/, () => ({ minutes: meetingMinutes(getDb() as never) })],

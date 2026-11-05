@@ -16,6 +16,7 @@ import { FinanceModal } from "@/components/FinanceModal";
 import { SettingsModal } from "@/components/SettingsModal";
 import { IdeasModal } from "@/components/IdeasModal";
 import { MinutesModal } from "@/components/MinutesModal";
+import { WorkModal } from "@/components/WorkModal";
 import { useOfficeData } from "@/hooks/useOfficeData";
 import { useTaskDriver } from "@/hooks/useTaskDriver";
 import { useOffice } from "@/store/officeStore";
@@ -59,6 +60,7 @@ export function App({ storeKind }: { storeKind: "artifact" | "local" }) {
       <div className="h-[clamp(130px,22vh,210px)]">
         <BottomDock data={data} error={error} />
       </div>
+      <WorkModal data={data} health={health} reload={reload} />
       <ReportModal data={data} health={health} reload={reload} />
       <MeetingDialog data={data} health={health} reload={reload} />
       <MeetingModal health={health} reload={reload} />
